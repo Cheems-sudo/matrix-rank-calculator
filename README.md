@@ -82,6 +82,11 @@ python matrix_rank_calculator.py
 ---
 
 
+git clone https://github.com/Cheems-sudo/matrix-rank-calculator
+cd matrix-rank-calculator
+python matrix_rank_calculator.py
+
+
 
 ## 📁 项目结构
 
