@@ -1,0 +1,130 @@
+"""计算流程和结果复核汇总"""
+
+from __future__ import annotations
+
+from matrix_rank.calculator import MatrixRankCalculator
+
+
+def calculate_rank_with_selected_method(method_choice: str, calculator: MatrixRankCalculator) -> None:
+    """显示所选方法的计算过程，并在结尾汇总至少两种方法的秩。"""
+
+    rows, cols = calculator.matrix.shape
+    max_dimension = max(rows, cols)
+    effective_method_choice = method_choice
+
+    if method_choice == "2" and max_dimension > 4:
+        print(
+            "所选行列式法需要枚举大量子行列式；"
+            f"当前 n = max({rows}, {cols}) = {max_dimension} > 4，"
+            "为避免大矩阵计算过慢，跳过行列式法详细过程。"
+        )
+        print("下面改用高斯消元法展示详细计算过程，并在结尾用 SVD 进行复核。")
+        effective_method_choice = "1"
+
+    if effective_method_choice == "1":
+        rank = calculator.rank_by_gaussian_elimination()
+        print(f"高斯消元法计算结果：rank = {rank}")
+    elif effective_method_choice == "2":
+        rank = calculator.rank_by_determinants()
+        print(f"行列式法计算结果：rank = {rank}")
+    else:
+        rank = calculator.rank_by_svd()
+        print(f"SVD 法数值秩计算结果：rank = {rank}")
+
+    print_rank_verification_summary(
+        calculator,
+        selected_method_choice=effective_method_choice,
+        selected_rank=rank,
+        original_method_choice=method_choice,
+    )
+
+
+def print_rank_verification_summary(
+    calculator: MatrixRankCalculator,
+    selected_method_choice: str,
+    selected_rank: int,
+    original_method_choice: str | None = None,
+) -> None:
+    """在详细过程后补充精确秩结论和 SVD 数值秩参考。"""
+    method_names = {
+        "1": "高斯消元法（精确秩）",
+        "2": "行列式法（精确秩）",
+        "3": "数值秩（SVD，仅供参考）",
+    }
+    rows, cols = calculator.matrix.shape
+    max_dimension = max(rows, cols)
+    exact_results: dict[str, int] = {}
+    svd_rank: int | None = None
+
+    print("\n")
+
+    print("结果可信度复核")
+    print("-" * len("结果可信度复核"))
+    print(f"矩阵规模为 {rows} × {cols}")
+    print(f"n = max({rows}, {cols}) = {max_dimension}")
+    print("")
+    print("说明：高斯消元法和行列式法计算的是精确秩；SVD 计算的是数值秩，只作为工程参考。")
+    print("")
+    if original_method_choice == "2" and selected_method_choice != "2":
+        print(f"用户原本选择行列式法，但 n > 4，\n因此已按规则跳过行列式法并改用高斯消元法展示过程。")
+        print("")
+    exact_method_choices = ["1"]
+    if max_dimension <= 4:
+        exact_method_choices.append("2")
+        print("因为 n ≤ 4，本次会计算两种精确秩方法（高斯消元法、行列式法）和 SVD 数值秩参考。")
+        print("")
+    else:
+        print("因为 n > 4，为避免子行列式枚举过慢，本次跳过行列式法；精确秩由高斯消元法给出，SVD 仅作数值参考。")
+        print("")
+
+    for method_choice in exact_method_choices:
+        if method_choice == selected_method_choice:
+            exact_results[method_choice] = selected_rank
+        elif method_choice == "1":
+            exact_results[method_choice] = calculator.rank_by_gaussian_elimination_silent()
+        else:
+            exact_results[method_choice] = calculator.rank_by_determinants_silent()
+
+    if selected_method_choice == "3":
+        svd_rank = selected_rank
+    else:
+        svd_rank = calculator.rank_by_svd_silent()
+
+    for method_choice in ["1", "2"]:
+        method_name = method_names[method_choice]
+        if method_choice in exact_results:
+            suffix = "（已展示详细过程）" if method_choice == selected_method_choice else "（静默复核，不展示过程）"
+            print(f"{method_name}{suffix}：rank = {exact_results[method_choice]}")
+            print("")
+        elif method_choice == "2":
+            print(f"{method_name}：已跳过（n = {max_dimension} > 4，避免大矩阵枚举子行列式）。")
+            print("")
+
+    svd_suffix = "（已展示详细过程，但仍仅供参考）" if selected_method_choice == "3" else "（静默复核，不展示过程）"
+    print(f"{method_names['3']}{svd_suffix}：rank = {svd_rank}")
+    print("")
+
+    exact_rank_values = list(exact_results.values())
+    if len(set(exact_rank_values)) == 1:
+        exact_rank = exact_rank_values[0]
+        print(f"精确秩结论：rank = {exact_rank}。")
+        print("")
+    else:
+        exact_rank = exact_results["1"]
+        print("精确秩复核警告：高斯消元法和行列式法结果不一致，请优先检查输入和符号计算过程。")
+        print("")
+        print(f"当前暂以高斯消元法得到的精确秩 rank = {exact_rank} 作为结论。")
+        print("")
+
+    if svd_rank == exact_rank:
+        print("SVD 参考结论：数值秩与精确秩一致。")
+        print("")
+    else:
+        print(
+            "SVD 参考结论：数值秩（SVD）与精确秩不一致；"
+            "以精确秩为准，SVD 仅供参考。"
+        )
+        print("")
+        print("可能原因：矩阵病态、元素尺度差很大，或存在很小但非零的精确值。")
+        print("")
+
