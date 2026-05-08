@@ -93,7 +93,7 @@ python matrix_rank_calculator.py
 ### 方法二：从源码运行
 如果你希望查看源码或进行修改，可以按以下步骤运行：
 
-```bash
+bash
 git clone https://github.com/Cheems-sudo/matrix-rank-calculator
 
 cd matrix-rank-calculator
@@ -104,7 +104,7 @@ python matrix_rank_calculator.py
 
 ## 📁 项目结构
 
-```text
+text
 .
 ├── matrix_rank_calculator.py      # 程序主入口（启动 GUI）
 ├── matrix_rank/                  # 核心功能模块
