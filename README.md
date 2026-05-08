@@ -55,7 +55,9 @@ python matrix_rank_calculator.py
 
 ## 🖥️ 界面说明
 
-按机器人提示操作即可！
+![Input](assets/input.png)
+
+![Result](assets/result.png)
 
 ---
 
@@ -81,9 +83,21 @@ python matrix_rank_calculator.py
 
 ---
 
+## 🚀 使用方法
 
+### 方法一：直接运行（推荐）
+前往 Release 页面下载 `.exe` 文件，双击即可运行，无需安装 Python 环境。
+
+---
+
+### 方法二：从源码运行
+如果你希望查看源码或进行修改，可以按以下步骤运行：
+
+```bash
 git clone https://github.com/Cheems-sudo/matrix-rank-calculator
+
 cd matrix-rank-calculator
+
 python matrix_rank_calculator.py
 
 
