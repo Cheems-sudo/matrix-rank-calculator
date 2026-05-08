@@ -57,7 +57,7 @@ python matrix_rank_calculator.py
 
 ![Input](assets/input.png)
 
-![Result](assets/result.png)
+![Result](assets/output.png)
 
 ---
 
