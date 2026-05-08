@@ -104,7 +104,7 @@ python matrix_rank_calculator.py
 
 ## 📁 项目结构
 
-text
+```text
 .
 ├── matrix_rank_calculator.py      # 程序主入口（启动 GUI）
 ├── matrix_rank/                  # 核心功能模块
@@ -120,7 +120,7 @@ text
 │   └── output.png
 ├── LICENSE
 └── README.md
-
+```
 ---
 
 ## ❓ 常见问题
