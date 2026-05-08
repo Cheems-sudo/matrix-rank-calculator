@@ -106,10 +106,20 @@ python matrix_rank_calculator.py
 
 ```text
 .
-├── matrix_rank_calculator.py   # 主入口（GUI）
-├── matrix_rank/                # 核心算法实现
+├── matrix_rank_calculator.py      # 程序主入口（启动 GUI）
+├── matrix_rank/                  # 核心功能模块
+│   ├── app.py                    # 应用调度与流程控制
+│   ├── gui.py                    # 图形界面实现（Tkinter）
+│   ├── calculator.py             # 秩计算核心逻辑
+│   ├── parsing.py                # 输入解析（支持分数/科学计数法）
+│   ├── workflow.py               # 计算流程控制
+│   ├── delayed_output.py         # 逐步输出控制（演示计算过程）
+│   └── __init__.py
+├── assets/                       # README 展示用图片
+│   ├── input.png
+│   └── output.png
+├── LICENSE
 └── README.md
-```
 
 ---
 
