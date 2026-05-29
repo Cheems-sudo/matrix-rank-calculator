@@ -36,7 +36,7 @@ class MatrixRankRobotApp:
         self.rows = 0
         self.cols = 0
         self.matrix: list[list[sp.Rational]] = []
-        self.current_row_index = 0
+        self.matrix_entries: list[list[tk.Entry]] = []
         self.output_queue: queue.Queue[str | None] = queue.Queue()
         self.pending_step_messages: list[str] = []
         self.calculation_finished = False
@@ -79,6 +79,7 @@ class MatrixRankRobotApp:
 
     def clear_controls(self) -> None:
         """清空底部操作区，便于进入下一步交互。"""
+        self.root.unbind("<Return>")
         for widget in self.control_frame.winfo_children():
             widget.destroy()
 
@@ -165,57 +166,99 @@ class MatrixRankRobotApp:
         self.rows = rows
         self.cols = cols
         self.matrix = []
-        self.current_row_index = 0
+        self.matrix_entries = []
         self.user_say(f"矩阵大小：{rows} 行 {cols} 列")
-        self.show_row_input()
+        self.show_matrix_grid_input()
 
-    def show_row_input(self) -> None:
-        """逐行读取矩阵元素。"""
+    def show_matrix_grid_input(self) -> None:
+        """生成矩阵表格，让用户一次性输入所有元素。"""
         self.clear_controls()
-        row_number = self.current_row_index + 1
         self.robot_say(
-            f"请输入第 {row_number} 行，共 {self.cols} 个数字，用空格分隔。\n"
+            f"请在下面的 {self.rows} 行 {self.cols} 列表格中输入矩阵元素。\n"
             "支持整数、小数、分数和科学计数法，例如：1、-2、0.5、3/4、1e12、1e-12。"
         )
 
-        row_entry = tk.Entry(self.control_frame, width=70)
-        row_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        grid_frame = tk.Frame(self.control_frame)
+        grid_frame.pack(side=tk.LEFT, padx=(0, 12))
+        self._create_matrix_grid(grid_frame)
 
-        def submit_row() -> None:
-            self.handle_row_input(row_entry.get())
+        button_frame = tk.Frame(self.control_frame)
+        button_frame.pack(side=tk.LEFT, anchor=tk.N)
 
-        tk.Button(self.control_frame, text="提交本行", command=submit_row).pack(side=tk.LEFT, padx=(0, 8))
-        tk.Button(self.control_frame, text="重新开始", command=self.show_method_selection).pack(side=tk.LEFT)
-        row_entry.focus_set()
-        self.root.bind("<Return>", lambda _event: submit_row())
+        tk.Button(button_frame, text="开始计算", command=self.handle_matrix_grid_submit).pack(
+            anchor=tk.W,
+            pady=(0, 8),
+        )
+        tk.Button(button_frame, text="重新选择方法", command=self.show_method_selection).pack(anchor=tk.W)
 
-    def handle_row_input(self, raw_row: str) -> None:
-        """校验并保存当前输入行。"""
-        parts = raw_row.strip().split()
-        row_number = self.current_row_index + 1
+        if self.matrix_entries and self.matrix_entries[0]:
+            self.matrix_entries[0][0].focus_set()
+        self.root.bind("<Return>", lambda _event: self.handle_matrix_grid_submit())
 
-        if len(parts) != self.cols:
-            messagebox.showerror(
-                "输入错误",
-                f"第 {row_number} 行需要 {self.cols} 个数字，但你输入了 {len(parts)} 个。",
+    def _create_matrix_grid(self, grid_frame: tk.Frame) -> None:
+        """根据矩阵尺寸创建 Entry 表格。"""
+        self.matrix_entries = []
+
+        for row_index in range(self.rows):
+            tk.Label(grid_frame, text=f"第 {row_index + 1} 行").grid(
+                row=row_index,
+                column=0,
+                padx=(0, 6),
+                pady=3,
+                sticky=tk.E,
             )
+
+            entry_row = []
+            for col_index in range(self.cols):
+                entry = tk.Entry(grid_frame, width=10, justify=tk.CENTER)
+                entry.grid(row=row_index, column=col_index + 1, padx=3, pady=3)
+                entry_row.append(entry)
+            self.matrix_entries.append(entry_row)
+
+    def handle_matrix_grid_submit(self) -> None:
+        """读取表格中的所有元素，校验通过后启动计算。"""
+        parsed_matrix = self._parse_matrix_grid()
+        if parsed_matrix is None:
             return
 
-        try:
-            row = [parse_matrix_element(part) for part in parts]
-        except ValueError:
-            messagebox.showerror("输入错误", "矩阵元素必须是整数、小数、分数或科学计数法，例如 1、-2、0.5、3/4、1e12、1e-12。")
-            return
-
-        self.matrix.append(row)
-        self.user_say(f"第 {row_number} 行：{'  '.join(str(value) for value in row)}")
-        self.current_row_index += 1
-
-        if self.current_row_index < self.rows:
-            self.show_row_input()
-            return
-
+        self.matrix = parsed_matrix
+        self.user_say("矩阵输入完成：\n" + self._format_matrix_input_summary(parsed_matrix))
         self.run_selected_calculation()
+
+    def _parse_matrix_grid(self) -> list[list[sp.Rational]] | None:
+        """解析整个矩阵表格；发现错误时提示具体行列位置。"""
+        parsed_matrix = []
+        error_message = "请输入整数、小数、分数或科学计数法。"
+
+        for row_index, entry_row in enumerate(self.matrix_entries):
+            parsed_row = []
+            for col_index, entry in enumerate(entry_row):
+                raw_value = entry.get().strip()
+                if not raw_value:
+                    messagebox.showerror(
+                        "输入错误",
+                        f"第 {row_index + 1} 行第 {col_index + 1} 列输入错误，{error_message}",
+                    )
+                    entry.focus_set()
+                    return None
+
+                try:
+                    parsed_row.append(parse_matrix_element(raw_value))
+                except ValueError:
+                    messagebox.showerror(
+                        "输入错误",
+                        f"第 {row_index + 1} 行第 {col_index + 1} 列输入错误，{error_message}",
+                    )
+                    entry.focus_set()
+                    return None
+
+            parsed_matrix.append(parsed_row)
+
+        return parsed_matrix
+
+    def _format_matrix_input_summary(self, matrix: list[list[sp.Rational]]) -> str:
+        """把用户输入的矩阵整理成简洁的聊天记录。"""
+        return "\n".join("  ".join(str(value) for value in row) for row in matrix)
 
     def run_selected_calculation(self) -> None:
         """运行用户选择的计算方法，并把详细过程按 0.7 秒间隔显示在窗口中。"""
