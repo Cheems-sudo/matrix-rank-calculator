@@ -5,7 +5,30 @@ from __future__ import annotations
 from matrix_rank.calculator import MatrixRankCalculator
 
 
-def calculate_rank_with_selected_method(method_choice: str, calculator: MatrixRankCalculator) -> None:
+METHOD_NAMES = {
+    "1": "高斯消元法",
+    "2": "行列式法",
+    "3": "SVD 法",
+}
+
+
+def calculate_rank_with_selected_method(
+    method_choice: str,
+    calculator: MatrixRankCalculator,
+    output_mode: str = "detailed",
+) -> None:
+    """根据输出模式组织矩阵秩计算流程。"""
+    if output_mode == "concise":
+        print_concise_rank_summary(method_choice, calculator)
+        return
+
+    if output_mode != "detailed":
+        raise ValueError("output_mode 必须是 detailed 或 concise。")
+
+    print_detailed_rank_process(method_choice, calculator)
+
+
+def print_detailed_rank_process(method_choice: str, calculator: MatrixRankCalculator) -> None:
     """显示所选方法的计算过程，并在结尾汇总至少两种方法的秩。"""
 
     rows, cols = calculator.matrix.shape
@@ -37,6 +60,37 @@ def calculate_rank_with_selected_method(method_choice: str, calculator: MatrixRa
         selected_rank=rank,
         original_method_choice=method_choice,
     )
+
+
+def print_concise_rank_summary(method_choice: str, calculator: MatrixRankCalculator) -> None:
+    """只输出关键结论，不展示中间消元、子式枚举或 SVD 分解过程。"""
+    if method_choice not in METHOD_NAMES:
+        raise ValueError("未知的计算方法。")
+
+    rows, cols = calculator.matrix.shape
+    max_dimension = max(rows, cols)
+    exact_rank = calculator.rank_by_gaussian_elimination_silent()
+    svd_rank = calculator.rank_by_svd_silent()
+
+    print("简洁模式结果")
+    print("-" * len("简洁模式结果"))
+    print(f"矩阵规模：{rows} × {cols}")
+    print(f"所选方法：{METHOD_NAMES[method_choice]}")
+
+    if method_choice == "2" and max_dimension > 4:
+        print("说明：行列式法在当前矩阵规模下会枚举大量子行列式；简洁模式中已使用高斯消元法给出精确秩。")
+    elif method_choice == "3":
+        print("说明：SVD 是数值秩方法；简洁模式仍会补充精确秩作为最终数学结论。")
+
+    print("")
+    print(f"精确秩 rank = {exact_rank}")
+    print(f"SVD 数值秩参考 rank = {svd_rank}")
+    print("")
+
+    if svd_rank == exact_rank:
+        print("SVD 参考结论：数值秩与精确秩一致。")
+    else:
+        print("SVD 参考结论：数值秩（SVD）与精确秩不一致；以精确秩为准，SVD 仅供参考。")
 
 
 def print_rank_verification_summary(

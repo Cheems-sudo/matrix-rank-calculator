@@ -24,6 +24,10 @@ class MatrixRankRobotApp:
         "2": "行列式法（适用于小矩阵）",
         "3": "奇异值分解法（SVD）",
     }
+    OUTPUT_MODE_NAMES = {
+        "detailed": "详细模式",
+        "concise": "简洁模式",
+    }
 
     def __init__(self, root: tk.Tk) -> None:
         """初始化机器人窗口和交互状态。"""
@@ -33,6 +37,7 @@ class MatrixRankRobotApp:
         self.root.minsize(760, 560)
 
         self.method_choice = ""
+        self.output_mode = "detailed"
         self.rows = 0
         self.cols = 0
         self.matrix: list[list[sp.Rational]] = []
@@ -124,9 +129,35 @@ class MatrixRankRobotApp:
         tk.Button(self.control_frame, text="返回主菜单", command=self.show_welcome).pack(side=tk.LEFT)
 
     def choose_method(self, method_choice: str) -> None:
-        """记录用户选择的方法，并开始读取矩阵尺寸。"""
+        """记录用户选择的方法，并继续选择输出模式。"""
         self.method_choice = method_choice
         self.user_say(self.METHOD_NAMES[method_choice])
+        self.show_output_mode_selection()
+
+    def show_output_mode_selection(self) -> None:
+        """让用户选择输出模式。"""
+        self.clear_controls()
+        self.robot_say(
+            "请选择输出模式。\n"
+            "建议使用详细模式，适合查看完整计算过程；如果只想快速看结论，可以选择简洁模式。"
+        )
+
+        tk.Button(
+            self.control_frame,
+            text="详细模式（推荐）",
+            command=lambda: self.choose_output_mode("detailed"),
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Button(
+            self.control_frame,
+            text="简洁模式",
+            command=lambda: self.choose_output_mode("concise"),
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Button(self.control_frame, text="返回选择方法", command=self.show_method_selection).pack(side=tk.LEFT)
+
+    def choose_output_mode(self, output_mode: str) -> None:
+        """记录输出模式，并开始读取矩阵尺寸。"""
+        self.output_mode = output_mode
+        self.user_say(self.OUTPUT_MODE_NAMES[output_mode])
         self.show_dimension_input()
 
     def show_dimension_input(self) -> None:
@@ -178,12 +209,11 @@ class MatrixRankRobotApp:
             "支持整数、小数、分数和科学计数法，例如：1、-2、0.5、3/4、1e12、1e-12。"
         )
 
-        grid_frame = tk.Frame(self.control_frame)
-        grid_frame.pack(side=tk.LEFT, padx=(0, 12))
-        self._create_matrix_grid(grid_frame)
+        scroll_container = self._create_scrollable_matrix_container()
+        scroll_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 12))
 
         button_frame = tk.Frame(self.control_frame)
-        button_frame.pack(side=tk.LEFT, anchor=tk.N)
+        button_frame.pack(side=tk.RIGHT, anchor=tk.N)
 
         tk.Button(button_frame, text="开始计算", command=self.handle_matrix_grid_submit).pack(
             anchor=tk.W,
@@ -194,6 +224,52 @@ class MatrixRankRobotApp:
         if self.matrix_entries and self.matrix_entries[0]:
             self.matrix_entries[0][0].focus_set()
         self.root.bind("<Return>", lambda _event: self.handle_matrix_grid_submit())
+
+    def _create_scrollable_matrix_container(self) -> tk.Frame:
+        """创建双向可滚动的矩阵输入容器，避免大矩阵挤出操作按钮。"""
+        container = tk.Frame(self.control_frame)
+        canvas = tk.Canvas(container, width=560, height=220, highlightthickness=0)
+        vertical_scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+        horizontal_scrollbar = tk.Scrollbar(container, orient=tk.HORIZONTAL, command=canvas.xview)
+        grid_frame = tk.Frame(canvas)
+
+        canvas.create_window((0, 0), window=grid_frame, anchor=tk.NW)
+        canvas.configure(
+            xscrollcommand=horizontal_scrollbar.set,
+            yscrollcommand=vertical_scrollbar.set,
+        )
+
+        grid_frame.bind(
+            "<Configure>",
+            lambda _event: canvas.configure(scrollregion=canvas.bbox(tk.ALL)),
+        )
+
+        canvas.grid(row=0, column=0, sticky=tk.NSEW)
+        vertical_scrollbar.grid(row=0, column=1, sticky=tk.NS)
+        horizontal_scrollbar.grid(row=1, column=0, sticky=tk.EW)
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+
+        self._bind_mousewheel(canvas, grid_frame)
+        self._create_matrix_grid(grid_frame)
+        return container
+
+    def _bind_mousewheel(self, canvas: tk.Canvas, scrollable_widget: tk.Widget) -> None:
+        """给矩阵输入区域绑定鼠标滚轮。"""
+        def on_mousewheel(event: tk.Event) -> None:
+            if event.delta:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def bind_mousewheel(_event: tk.Event) -> None:
+            canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        def unbind_mousewheel(_event: tk.Event) -> None:
+            canvas.unbind_all("<MouseWheel>")
+
+        canvas.bind("<Enter>", bind_mousewheel)
+        canvas.bind("<Leave>", unbind_mousewheel)
+        scrollable_widget.bind("<Enter>", bind_mousewheel)
+        scrollable_widget.bind("<Leave>", unbind_mousewheel)
 
     def _create_matrix_grid(self, grid_frame: tk.Frame) -> None:
         """根据矩阵尺寸创建 Entry 表格。"""
@@ -264,7 +340,10 @@ class MatrixRankRobotApp:
         """运行用户选择的计算方法，并把详细过程按 0.7 秒间隔显示在窗口中。"""
         self.clear_controls()
         self.root.unbind("<Return>")
-        self.robot_say("矩阵输入完成，我现在开始计算。每个步骤会间隔约 0.7 秒显示，方便你逐步查看。")
+        if self.output_mode == "concise":
+            self.robot_say("矩阵输入完成，我现在使用简洁模式计算，只展示关键结论。")
+        else:
+            self.robot_say("矩阵输入完成，我现在开始计算。每个步骤会间隔约 0.7 秒显示，方便你逐步查看。")
 
         self.output_queue = queue.Queue()
         self.pending_step_messages = []
@@ -282,7 +361,11 @@ class MatrixRankRobotApp:
             writer = DelayedStepWriter(self.output_queue)
 
             with redirect_stdout(writer):
-                calculate_rank_with_selected_method(self.method_choice, calculator)
+                calculate_rank_with_selected_method(
+                    self.method_choice,
+                    calculator,
+                    output_mode=self.output_mode,
+                )
 
             writer.flush()
         except Exception as exc:  # noqa: BLE001 - 需要把后台线程错误展示给用户
