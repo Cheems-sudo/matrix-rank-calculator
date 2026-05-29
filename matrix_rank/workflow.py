@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sympy as sp
+
 from matrix_rank.calculator import MatrixRankCalculator
 
 
@@ -76,10 +78,14 @@ def print_concise_rank_summary(method_choice: str, calculator: MatrixRankCalcula
     print("-" * len("简洁模式结果"))
     print(f"矩阵规模：{rows} × {cols}")
     print(f"所选方法：{METHOD_NAMES[method_choice]}")
+    print("")
+    print_matrix_properties_summary(calculator, exact_rank=exact_rank)
 
     if method_choice == "2" and max_dimension > 4:
+        print("")
         print("说明：行列式法在当前矩阵规模下会枚举大量子行列式；简洁模式中已使用高斯消元法给出精确秩。")
     elif method_choice == "3":
+        print("")
         print("说明：SVD 是数值秩方法；简洁模式仍会补充精确秩作为最终数学结论。")
 
     print("")
@@ -91,6 +97,54 @@ def print_concise_rank_summary(method_choice: str, calculator: MatrixRankCalcula
         print("SVD 参考结论：数值秩与精确秩一致。")
     else:
         print("SVD 参考结论：数值秩（SVD）与精确秩不一致；以精确秩为准，SVD 仅供参考。")
+
+
+def get_matrix_properties_summary(
+    calculator: MatrixRankCalculator,
+    exact_rank: int | None = None,
+) -> dict[str, str]:
+    """返回矩阵规模、秩、满秩、行列式和可逆性等基础信息。"""
+    rows, cols = calculator.matrix.shape
+    resolved_exact_rank = (
+        calculator.rank_by_gaussian_elimination_silent()
+        if exact_rank is None
+        else exact_rank
+    )
+    is_square = rows == cols
+    is_full_rank = resolved_exact_rank == min(rows, cols)
+
+    summary = {
+        "shape": f"{rows} × {cols}",
+        "is_square": "是" if is_square else "否",
+        "exact_rank": str(resolved_exact_rank),
+        "is_full_rank": "是" if is_full_rank else "否",
+        "determinant": "不适用，非方阵没有行列式",
+        "is_invertible": "不适用，非方阵没有逆矩阵",
+    }
+
+    if is_square:
+        determinant = sp.simplify(calculator.exact_matrix.det())
+        summary["determinant"] = str(determinant)
+        summary["is_invertible"] = "是" if determinant != 0 else "否"
+
+    return summary
+
+
+def print_matrix_properties_summary(
+    calculator: MatrixRankCalculator,
+    exact_rank: int | None = None,
+) -> None:
+    """打印矩阵基础信息总结。"""
+    summary = get_matrix_properties_summary(calculator, exact_rank=exact_rank)
+
+    print("矩阵基础信息")
+    print("-" * len("矩阵基础信息"))
+    print(f"矩阵规模：{summary['shape']}")
+    print(f"是否方阵：{summary['is_square']}")
+    print(f"精确秩：{summary['exact_rank']}")
+    print(f"是否满秩：{summary['is_full_rank']}")
+    print(f"行列式：{summary['determinant']}")
+    print(f"是否可逆：{summary['is_invertible']}")
 
 
 def print_rank_verification_summary(
@@ -181,4 +235,7 @@ def print_rank_verification_summary(
         print("")
         print("可能原因：矩阵病态、元素尺度差很大，或存在很小但非零的精确值。")
         print("")
+
+    print_matrix_properties_summary(calculator, exact_rank=exact_rank)
+    print("")
 
