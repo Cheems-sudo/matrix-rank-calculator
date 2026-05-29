@@ -1,159 +1,131 @@
 # Matrix Rank Calculator
 
-在计算矩阵秩时，你是不是也遇到过这些情况：
+Matrix Rank Calculator 是一个用于计算矩阵秩的 Python 小工具。项目提供 tkinter 图形界面，支持逐步展示计算过程，适合线性代数学习、作业核对和算法验证。
 
-❓ 拍照搜题太麻烦，只想快速验证答案
-❓ 有答案却没有过程，看了也不会
-❓ 解析过于抽象，根本看不懂
+项目目前支持三种计算方式：高斯消元法、子行列式法和 SVD 数值秩。高斯消元法和子行列式法用于精确秩计算，SVD 用于数值参考。
 
-与其在这些工具里反复折腾，不如直接用一个真正为“理解过程”设计的工具。
+## 功能亮点
 
-👉 本项目专注于矩阵秩计算，支持逐步演示计算过程，并提供 高斯消元法 / 行列式法 / SVD 三种方法对比，让你不仅知道答案，更知道为什么。
+- 支持整数、小数、负数、分数和科学计数法输入。
+- 使用 `sympy` 保留精确分数计算，减少浮点误差影响。
+- 高斯消元法会展示行变换过程。
+- 子行列式法适合小规模矩阵的理论验证。
+- SVD 方法可作为浮点矩阵的数值秩参考。
+- 提供 tkinter 图形界面，无需命令行交互。
 
----
+## 安装依赖
 
-## 🔗 项目地址
+建议使用 Python 3.11 或更新版本。
 
-GitHub 仓库：
-[https://github.com/Cheems-sudo/matrix-rank-calculator](https://github.com/Cheems-sudo/matrix-rank-calculator)
+```bash
+pip install -r requirements.txt
+```
 
-欢迎 Star ⭐ 和反馈！
+也可以手动安装依赖：
 
----
+```bash
+pip install numpy sympy pytest
+```
 
-## ✨ 项目亮点
+## 运行方式
 
-* 🧠 **逐步展示计算过程**（不是只给结果）
-* 🔁 **三种方法对比**：高斯 / 行列式 / SVD
-* 🖥️ **图形界面（GUI）操作简单直观**
-* 📊 适合教学、学习和算法验证
-
----
-
-## 🚀 使用方法
-
-### 1️⃣ 克隆仓库
+从源码运行：
 
 ```bash
 git clone https://github.com/Cheems-sudo/matrix-rank-calculator
 cd matrix-rank-calculator
-```
-
-### 2️⃣ 安装依赖
-
-```bash
-pip install numpy sympy
-```
-
-### 3️⃣ 运行程序
-
-```bash
 python matrix_rank_calculator.py
 ```
 
----
+## 界面说明
 
-## 🖥️ 界面说明
+启动程序后，按界面提示选择计算方法、输入矩阵行数和列数，再逐行输入矩阵元素。
+
+输入示例：
+
+```text
+1 2 3
+4 5 6
+7 8 9
+```
+
+支持的元素格式示例：
+
+```text
+2
+-3
+0.5
+-2/5
+1e-3
+```
 
 ![Input](assets/input.png)
 
 ![Result](assets/output.png)
 
----
+## 方法说明
 
-## 📐 方法说明
+### 高斯消元法
 
-### ✅ 高斯消元法（推荐默认）
+高斯消元法通过初等行变换把矩阵化为行阶梯形矩阵，再根据非零行数量判断矩阵秩。该方法是项目默认推荐的精确计算方式。
 
-* 适用于大多数情况
-* 通过行变换得到阶梯矩阵
-* 根据非零行数判断秩
+### 子行列式法
 
-### ⚠️ 行列式法
+子行列式法通过寻找最高阶非零子行列式来确定矩阵秩。由于需要枚举子矩阵，矩阵规模较大时计算量会快速增加，因此更适合小矩阵验证。
 
-* 主要用于理论演示
-* 更适合方阵是否满秩的判断
-* 不适用于通用矩阵
+### SVD 数值秩
 
-### 🔬 SVD（奇异值分解）
+SVD 方法通过奇异值分解判断数值秩。它适合浮点数据和工程场景中的参考判断，但在精确数学结论上应以高斯消元法或子行列式法为准。
 
-* 数值稳定性最好
-* 适用于浮点数据 / 含误差的数据
-* 可处理“接近线性相关”的情况
-
----
-
-## 🚀 使用方法
-
-### 方法一：直接运行（推荐）
-前往 Release 页面下载 `.exe` 文件，双击即可运行，无需安装 Python 环境。
-
----
-
-### 方法二：从源码运行
-如果你希望查看源码或进行修改，可以按以下步骤运行：
-
-bash
-git clone https://github.com/Cheems-sudo/matrix-rank-calculator
-
-cd matrix-rank-calculator
-
-python matrix_rank_calculator.py
-
-
-
-## 📁 项目结构
+## 项目结构
 
 ```text
 .
-├── matrix_rank_calculator.py      # 程序主入口（启动 GUI）
-├── matrix_rank/                  # 核心功能模块
-│   ├── app.py                    # 应用调度与流程控制
-│   ├── gui.py                    # 图形界面实现（Tkinter）
-│   ├── calculator.py             # 秩计算核心逻辑
-│   ├── parsing.py                # 输入解析（支持分数/科学计数法）
-│   ├── workflow.py               # 计算流程控制
-│   ├── delayed_output.py         # 逐步输出控制（演示计算过程）
+├── matrix_rank_calculator.py      # 程序入口
+├── matrix_rank/
+│   ├── app.py                     # 应用启动逻辑
+│   ├── calculator.py              # 矩阵秩计算核心
+│   ├── delayed_output.py          # GUI 延迟输出控制
+│   ├── gui.py                     # tkinter 图形界面
+│   ├── parsing.py                 # 矩阵元素解析
+│   ├── workflow.py                # 计算流程和结果复核
 │   └── __init__.py
-├── assets/                       # README 展示用图片
-│   ├── input.png
-│   └── output.png
+├── assets/
+│   ├── input.png                  # README 输入界面截图
+│   └── output.png                 # README 输出界面截图
+├── tests/                         # pytest 单元测试
+├── requirements.txt               # Python 依赖
 ├── LICENSE
 └── README.md
 ```
----
 
-## ❓ 常见问题
+## 常见问题
 
-### 为什么结果和手算不一致？
+### 为什么 SVD 结果可能和精确秩不同？
 
-* 浮点数计算存在误差
-* SVD 方法使用阈值判断“接近 0”的奇异值
+SVD 是数值方法，会根据阈值判断奇异值是否视为 0。对于病态矩阵、尺度差异很大的矩阵，或存在非常小但非零奇异值的矩阵，SVD 数值秩可能与精确秩不同。
 
-### GUI 无法启动？
+### GUI 无法启动怎么办？
 
-* 请确认 Python 环境支持 tkinter
+请确认当前 Python 环境支持 `tkinter`。部分精简 Python 发行版可能没有包含 tkinter，需要单独安装或更换 Python 版本。
 
----
+### 如何运行测试？
 
-## 🔮 后续可扩展
+```bash
+python -m pytest -q
+```
 
-* 增加矩阵变换动画
-* 支持更多线性代数功能（逆矩阵、特征值等）
-* 优化输入格式（文件 / 批量输入）
+## 后续计划
 
----
+- 改进矩阵输入体验。
+- 增加更多边界情况测试。
+- 优化计算过程展示文本。
+- 在保持项目简洁的前提下完善打包发布流程。
 
-## 📜 License
+## License
 
 MIT License
 
----
+## 作者信息
 
-## 👤 作者
-
-* GitHub: [https://github.com/Cheems-sudo](https://github.com/Cheems-sudo)
-
----
-
-如果这个项目对你有帮助，欢迎点个 Star ⭐！
+- GitHub: [https://github.com/Cheems-sudo](https://github.com/Cheems-sudo)
