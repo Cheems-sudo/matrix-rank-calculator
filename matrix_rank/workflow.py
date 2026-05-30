@@ -5,6 +5,7 @@ from __future__ import annotations
 import sympy as sp
 
 from matrix_rank.calculator import MatrixRankCalculator
+from matrix_rank.eigen import EigenvalueSummary, get_eigenvalue_summary as build_eigenvalue_summary
 
 
 METHOD_NAMES = {
@@ -80,6 +81,8 @@ def print_concise_rank_summary(method_choice: str, calculator: MatrixRankCalcula
     print(f"所选方法：{METHOD_NAMES[method_choice]}")
     print("")
     print_matrix_properties_summary(calculator, exact_rank=exact_rank)
+    print("")
+    print_eigenvalue_summary(calculator, output_mode="concise")
 
     if method_choice == "2" and max_dimension > 4:
         print("")
@@ -145,6 +148,39 @@ def print_matrix_properties_summary(
     print(f"是否满秩：{summary['is_full_rank']}")
     print(f"行列式：{summary['determinant']}")
     print(f"是否可逆：{summary['is_invertible']}")
+
+
+def get_eigenvalue_summary(calculator: MatrixRankCalculator) -> EigenvalueSummary:
+    """返回矩阵的精确特征值信息；非方阵返回说明信息。"""
+    return build_eigenvalue_summary(calculator.exact_matrix)
+
+
+def print_eigenvalue_summary(
+    calculator: MatrixRankCalculator,
+    output_mode: str = "detailed",
+) -> None:
+    """打印特征多项式和特征值信息。"""
+    summary = get_eigenvalue_summary(calculator)
+
+    print("特征值信息")
+    print("-" * len("特征值信息"))
+
+    if not summary.is_square:
+        print(summary.message)
+        return
+
+    if output_mode == "detailed":
+        print("说明：特征多项式按 det(lambdaI - A) 计算。")
+        print(f"特征多项式 det(lambdaI - A)：{summary.characteristic_polynomial}")
+        print("解 det(lambdaI - A) = 0 得到特征值：")
+    elif output_mode == "concise":
+        print(f"特征多项式：{summary.characteristic_polynomial}")
+        print("特征值：")
+    else:
+        raise ValueError("output_mode 必须是 detailed 或 concise。")
+
+    for eigenvalue, algebraic_multiplicity in summary.eigenvalues:
+        print(f"- {eigenvalue}，代数重数 {algebraic_multiplicity}")
 
 
 def print_rank_verification_summary(
@@ -238,4 +274,5 @@ def print_rank_verification_summary(
 
     print_matrix_properties_summary(calculator, exact_rank=exact_rank)
     print("")
-
+    print_eigenvalue_summary(calculator, output_mode="detailed")
+    print("")

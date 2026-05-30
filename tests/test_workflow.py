@@ -15,6 +15,8 @@ def test_concise_output_mode_prints_key_summary(capsys):
     assert "矩阵规模：2 × 2" in output
     assert "所选方法：高斯消元法" in output
     assert "矩阵基础信息" in output
+    assert "特征值信息" in output
+    assert "特征多项式：" in output
     assert "精确秩 rank = 1" in output
     assert "SVD 数值秩参考 rank = 1" in output
 
@@ -39,6 +41,18 @@ def test_detailed_output_mode_remains_default(capsys):
     assert "高斯消元法计算结果：rank = 2" in output
     assert "结果可信度复核" in output
     assert "矩阵基础信息" in output
+    assert "特征多项式 det(lambdaI - A)" in output
+    assert "解 det(lambdaI - A) = 0 得到特征值" in output
+
+
+def test_rectangular_matrix_prints_no_eigenvalue_message(capsys):
+    calculator = MatrixRankCalculator([[1, 2, 3], [4, 5, 6]])
+
+    calculate_rank_with_selected_method("1", calculator, output_mode="concise")
+
+    output = capsys.readouterr().out
+    assert "特征值信息" in output
+    assert "非方阵没有特征值。" in output
 
 
 def test_matrix_properties_summary_for_invertible_square_matrix():
