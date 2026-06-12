@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "matrix-rank-calculator"
+version = "0.2.0"
+description = "A tkinter and CLI matrix rank calculator with exact symbolic verification."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Cheems-sudo" },
+]
+dependencies = [
+    "numpy",
+    "sympy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy",
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+matrix-rank = "matrix_rank.cli:main"
+matrix-rank-gui = "matrix_rank.app:main"
+
+[project.urls]
+Repository = "https://github.com/Cheems-sudo/matrix-rank-calculator"
+
+[tool.setuptools.packages.find]
+include = ["matrix_rank*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["matrix_rank"]
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+ignore_missing_imports = true

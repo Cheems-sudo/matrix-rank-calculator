@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import sympy as sp
 
-from matrix_rank.calculator import MatrixRankCalculator
+from matrix_rank.calculator import (
+    MatrixRankCalculator,
+    SVDUnavailableError,
+    format_exact_value,
+)
+from matrix_rank.delayed_output import start_output_step
 from matrix_rank.eigen import EigenvalueSummary, get_eigenvalue_summary as build_eigenvalue_summary
 
 
@@ -15,12 +20,20 @@ METHOD_NAMES = {
 }
 
 
+def validate_method_choice(method_choice: str) -> None:
+    """校验计算方法编号。"""
+    if method_choice not in METHOD_NAMES:
+        raise ValueError("未知的计算方法。")
+
+
 def calculate_rank_with_selected_method(
     method_choice: str,
     calculator: MatrixRankCalculator,
     output_mode: str = "detailed",
 ) -> None:
     """根据输出模式组织矩阵秩计算流程。"""
+    validate_method_choice(method_choice)
+
     if output_mode == "concise":
         print_concise_rank_summary(method_choice, calculator)
         return
@@ -33,6 +46,7 @@ def calculate_rank_with_selected_method(
 
 def print_detailed_rank_process(method_choice: str, calculator: MatrixRankCalculator) -> None:
     """显示所选方法的计算过程，并在结尾汇总至少两种方法的秩。"""
+    validate_method_choice(method_choice)
 
     rows, cols = calculator.matrix.shape
     max_dimension = max(rows, cols)
@@ -54,8 +68,15 @@ def print_detailed_rank_process(method_choice: str, calculator: MatrixRankCalcul
         rank = calculator.rank_by_determinants()
         print(f"行列式法计算结果：rank = {rank}")
     else:
-        rank = calculator.rank_by_svd()
-        print(f"SVD 法数值秩计算结果：rank = {rank}")
+        try:
+            rank = calculator.rank_by_svd()
+            print(f"SVD 法数值秩计算结果：rank = {rank}")
+        except SVDUnavailableError as exc:
+            print(f"SVD 数值计算不可用：{exc}")
+            print("下面改用高斯消元法展示精确秩计算过程。")
+            effective_method_choice = "1"
+            rank = calculator.rank_by_gaussian_elimination()
+            print(f"高斯消元法计算结果：rank = {rank}")
 
     print_rank_verification_summary(
         calculator,
@@ -67,14 +88,19 @@ def print_detailed_rank_process(method_choice: str, calculator: MatrixRankCalcul
 
 def print_concise_rank_summary(method_choice: str, calculator: MatrixRankCalculator) -> None:
     """只输出关键结论，不展示中间消元、子式枚举或 SVD 分解过程。"""
-    if method_choice not in METHOD_NAMES:
-        raise ValueError("未知的计算方法。")
+    validate_method_choice(method_choice)
 
     rows, cols = calculator.matrix.shape
     max_dimension = max(rows, cols)
     exact_rank = calculator.rank_by_gaussian_elimination_silent()
-    svd_rank = calculator.rank_by_svd_silent()
+    try:
+        svd_rank = calculator.rank_by_svd_silent()
+        svd_error = None
+    except SVDUnavailableError as exc:
+        svd_rank = None
+        svd_error = str(exc)
 
+    start_output_step()
     print("简洁模式结果")
     print("-" * len("简洁模式结果"))
     print(f"矩阵规模：{rows} × {cols}")
@@ -93,10 +119,15 @@ def print_concise_rank_summary(method_choice: str, calculator: MatrixRankCalcula
 
     print("")
     print(f"精确秩 rank = {exact_rank}")
-    print(f"SVD 数值秩参考 rank = {svd_rank}")
+    if svd_rank is None:
+        print(f"SVD 数值秩参考不可用：{svd_error}")
+    else:
+        print(f"SVD 数值秩参考 rank = {svd_rank}")
     print("")
 
-    if svd_rank == exact_rank:
+    if svd_rank is None:
+        print("SVD 参考结论：本次无法进行数值复核；精确秩结论仍然有效。")
+    elif svd_rank == exact_rank:
         print("SVD 参考结论：数值秩与精确秩一致。")
     else:
         print("SVD 参考结论：数值秩（SVD）与精确秩不一致；以精确秩为准，SVD 仅供参考。")
@@ -127,7 +158,7 @@ def get_matrix_properties_summary(
 
     if is_square:
         determinant = sp.simplify(calculator.exact_matrix.det())
-        summary["determinant"] = str(determinant)
+        summary["determinant"] = format_exact_value(determinant)
         summary["is_invertible"] = "是" if determinant != 0 else "否"
 
     return summary
@@ -140,6 +171,7 @@ def print_matrix_properties_summary(
     """打印矩阵基础信息总结。"""
     summary = get_matrix_properties_summary(calculator, exact_rank=exact_rank)
 
+    start_output_step()
     print("矩阵基础信息")
     print("-" * len("矩阵基础信息"))
     print(f"矩阵规模：{summary['shape']}")
@@ -162,6 +194,7 @@ def print_eigenvalue_summary(
     """打印特征多项式和特征值信息。"""
     summary = get_eigenvalue_summary(calculator)
 
+    start_output_step()
     print("特征值信息")
     print("-" * len("特征值信息"))
 
@@ -169,18 +202,39 @@ def print_eigenvalue_summary(
         print(summary.message)
         return
 
+    if summary.message is not None:
+        print(summary.message)
+        return
+
     if output_mode == "detailed":
         print("说明：特征多项式按 det(lambdaI - A) 计算。")
-        print(f"特征多项式 det(lambdaI - A)：{summary.characteristic_polynomial}")
+        print(
+            "特征多项式 det(lambdaI - A)："
+            f"{format_exact_value(summary.characteristic_polynomial)}"
+        )
         print("解 det(lambdaI - A) = 0 得到特征值：")
     elif output_mode == "concise":
-        print(f"特征多项式：{summary.characteristic_polynomial}")
+        print(f"特征多项式：{format_exact_value(summary.characteristic_polynomial)}")
         print("特征值：")
     else:
         raise ValueError("output_mode 必须是 detailed 或 concise。")
 
     for eigenvalue, algebraic_multiplicity in summary.eigenvalues:
-        print(f"- {eigenvalue}，代数重数 {algebraic_multiplicity}")
+        print(
+            f"- {format_exact_value(eigenvalue)}，"
+            f"代数重数 {algebraic_multiplicity}"
+        )
+
+    if output_mode == "detailed":
+        print("特征子空间基：")
+        for eigenspace in summary.eigenspaces:
+            print(
+                f"- 特征值 {format_exact_value(eigenspace.eigenvalue)}："
+                f"几何重数 {eigenspace.geometric_multiplicity}"
+            )
+            for vector in eigenspace.eigenvectors:
+                formatted_vector = ", ".join(format_exact_value(value) for value in vector)
+                print(f"  [{formatted_vector}]^T")
 
 
 def print_rank_verification_summary(
@@ -200,8 +254,7 @@ def print_rank_verification_summary(
     exact_results: dict[str, int] = {}
     svd_rank: int | None = None
 
-    print("\n")
-
+    start_output_step()
     print("结果可信度复核")
     print("-" * len("结果可信度复核"))
     print(f"矩阵规模为 {rows} × {cols}")
@@ -229,10 +282,14 @@ def print_rank_verification_summary(
         else:
             exact_results[method_choice] = calculator.rank_by_determinants_silent()
 
+    svd_error: str | None = None
     if selected_method_choice == "3":
         svd_rank = selected_rank
     else:
-        svd_rank = calculator.rank_by_svd_silent()
+        try:
+            svd_rank = calculator.rank_by_svd_silent()
+        except SVDUnavailableError as exc:
+            svd_error = str(exc)
 
     for method_choice in ["1", "2"]:
         method_name = method_names[method_choice]
@@ -245,7 +302,10 @@ def print_rank_verification_summary(
             print("")
 
     svd_suffix = "（已展示详细过程，但仍仅供参考）" if selected_method_choice == "3" else "（静默复核，不展示过程）"
-    print(f"{method_names['3']}{svd_suffix}：rank = {svd_rank}")
+    if svd_rank is None:
+        print(f"{method_names['3']}：不可用（{svd_error}）")
+    else:
+        print(f"{method_names['3']}{svd_suffix}：rank = {svd_rank}")
     print("")
 
     exact_rank_values = list(exact_results.values())
@@ -260,7 +320,10 @@ def print_rank_verification_summary(
         print(f"当前暂以高斯消元法得到的精确秩 rank = {exact_rank} 作为结论。")
         print("")
 
-    if svd_rank == exact_rank:
+    if svd_rank is None:
+        print("SVD 参考结论：本次无法进行数值复核；精确秩结论仍然有效。")
+        print("")
+    elif svd_rank == exact_rank:
         print("SVD 参考结论：数值秩与精确秩一致。")
         print("")
     else:

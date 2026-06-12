@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 import queue
+import sys
+
+
+def start_output_step() -> None:
+    """Start a new GUI output step when stdout supports the step protocol."""
+    start_step = getattr(sys.stdout, "start_step", None)
+    if callable(start_step):
+        start_step()
 
 
 class DelayedStepWriter:
@@ -14,15 +22,13 @@ class DelayedStepWriter:
         self.buffer = ""
 
     def write(self, text: str) -> int:
-        """接收 stdout 文本，并在遇到空行时认为一个计算步骤结束。"""
+        """接收 stdout 文本；步骤边界由 start_step 显式控制。"""
         self.buffer += text
-
-        while "\n\n" in self.buffer:
-            step_text, self.buffer = self.buffer.split("\n\n", 1)
-            if step_text.strip():
-                self.output_queue.put(step_text.strip())
-
         return len(text)
+
+    def start_step(self) -> None:
+        """结束当前步骤并开始下一个步骤。"""
+        self.flush()
 
     def flush(self) -> None:
         """把剩余缓冲内容作为最后一个步骤送入队列。"""

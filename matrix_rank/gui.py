@@ -16,6 +16,22 @@ from matrix_rank.parsing import parse_matrix_element
 from matrix_rank.workflow import calculate_rank_with_selected_method
 
 
+MAX_MATRIX_ROWS = 10
+MAX_MATRIX_COLS = 10
+
+
+def get_dimension_validation_error(rows: int, cols: int) -> str | None:
+    """返回矩阵尺寸校验错误；合法时返回 None。"""
+    if rows <= 0 or cols <= 0:
+        return "行数和列数都必须大于 0。"
+    if rows > MAX_MATRIX_ROWS or cols > MAX_MATRIX_COLS:
+        return (
+            f"当前版本最多支持 {MAX_MATRIX_ROWS} 行、{MAX_MATRIX_COLS} 列。"
+            "较大的矩阵可能导致详细计算或特征值计算耗时过长。"
+        )
+    return None
+
+
 class MatrixRankRobotApp:
     """使用 tkinter 实现的矩阵秩机器人窗口。"""
 
@@ -163,7 +179,10 @@ class MatrixRankRobotApp:
     def show_dimension_input(self) -> None:
         """在窗口中读取矩阵行数和列数。"""
         self.clear_controls()
-        self.robot_say("请输入矩阵的行数和列数。行数、列数都必须是正整数。")
+        self.robot_say(
+            "请输入矩阵的行数和列数。行数、列数都必须是正整数，"
+            f"且当前版本最多支持 {MAX_MATRIX_ROWS} 行、{MAX_MATRIX_COLS} 列。"
+        )
 
         tk.Label(self.control_frame, text="行数：").pack(side=tk.LEFT)
         rows_entry = tk.Entry(self.control_frame, width=8)
@@ -190,8 +209,9 @@ class MatrixRankRobotApp:
             messagebox.showerror("输入错误", "行数和列数必须是正整数，例如 3。")
             return
 
-        if rows <= 0 or cols <= 0:
-            messagebox.showerror("输入错误", "行数和列数都必须大于 0。")
+        validation_error = get_dimension_validation_error(rows, cols)
+        if validation_error is not None:
+            messagebox.showerror("输入错误", validation_error)
             return
 
         self.rows = rows

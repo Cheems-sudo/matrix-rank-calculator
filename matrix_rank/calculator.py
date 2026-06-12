@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from itertools import combinations
-from typing import Iterable
+from typing import Literal, overload
 
 import numpy as np
 import sympy as sp
 
+from matrix_rank.delayed_output import start_output_step
 from matrix_rank.parsing import parse_matrix_element
+
+
+class SVDUnavailableError(ValueError):
+    """Raised when the exact matrix cannot be represented safely for SVD."""
+
+
+def format_exact_value(value: object) -> str:
+    """安全格式化精确值；超长整数改用科学计数法摘要。"""
+    try:
+        return str(value)
+    except ValueError:
+        approximate_value = sp.N(value, 6)
+        return f"{approximate_value}（精确值过长，使用近似科学计数法显示）"
 
 
 class MatrixRankCalculator:
@@ -23,7 +38,7 @@ class MatrixRankCalculator:
         """
         self.tol = tol
         self.exact_matrix = self._build_exact_matrix(matrix)
-        self.matrix = np.array(self.exact_matrix.tolist(), dtype=float)
+        self.matrix = self._build_numeric_matrix()
 
         if self.matrix.ndim != 2:
             raise ValueError("输入必须是二维矩阵。")
@@ -36,6 +51,59 @@ class MatrixRankCalculator:
             raise ValueError("输入必须是二维矩阵。") from exc
         except ValueError as exc:
             raise ValueError("矩阵元素必须是整数、小数、分数或科学计数法形式的数字。") from exc
+
+    def _build_numeric_matrix(self) -> np.ndarray:
+        """构建供 SVD 使用的浮点矩阵，无法表示的元素记为非有限值。"""
+        rows, cols = self.exact_matrix.shape
+        numeric_matrix = np.empty((rows, cols), dtype=float)
+
+        for row_index in range(rows):
+            for col_index in range(cols):
+                exact_value = self.exact_matrix[row_index, col_index]
+                try:
+                    numeric_value = float(exact_value)
+                except (OverflowError, TypeError, ValueError):
+                    numeric_value = np.nan
+
+                if exact_value != 0 and numeric_value == 0.0:
+                    numeric_value = np.nan
+
+                numeric_matrix[row_index, col_index] = numeric_value
+
+        return numeric_matrix
+
+    def _ensure_svd_available(self) -> None:
+        """确保矩阵可以用有限浮点数执行 SVD。"""
+        if not np.all(np.isfinite(self.matrix)):
+            raise SVDUnavailableError(
+                "矩阵包含超出浮点数表示范围的元素，无法进行 SVD 数值计算。"
+            )
+
+    @overload
+    def _compute_svd(self, *, compute_uv: Literal[False]) -> np.ndarray: ...
+
+    @overload
+    def _compute_svd(
+        self,
+        *,
+        compute_uv: Literal[True],
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]: ...
+
+    def _compute_svd(
+        self,
+        *,
+        compute_uv: bool,
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """执行 SVD，并把 NumPy 收敛错误转换为可降级异常。"""
+        self._ensure_svd_available()
+        try:
+            return np.linalg.svd(
+                self.matrix,
+                compute_uv=compute_uv,
+                full_matrices=True,
+            )
+        except np.linalg.LinAlgError as exc:
+            raise SVDUnavailableError("SVD 数值分解未收敛。") from exc
 
     def _format_scalar(self, value: object) -> str:
         """把矩阵中的单个元素格式化成紧凑、易对齐的字符串。
@@ -53,7 +121,7 @@ class MatrixRankCalculator:
             return str(value)
 
         simplified_value = sp.simplify(value)
-        return str(simplified_value)
+        return format_exact_value(simplified_value)
 
     def _format_matrix(self, matrix: np.ndarray | sp.Matrix) -> str:
         """把矩阵格式化为行列分明的文本表格。
@@ -159,6 +227,7 @@ class MatrixRankCalculator:
         zero_tol: float | None = None,
     ) -> None:
         """打印 SVD 等数值矩阵，明确标注为近似值并保持行列对齐。"""
+        start_output_step()
         print(f"\n{title}（数值近似）")
         print("-" * (len(title) + len("（数值近似）")))
         print(self._format_numeric_matrix(matrix, precision, zero_tol))
@@ -195,6 +264,7 @@ class MatrixRankCalculator:
 
     def _print_matrix(self, matrix: np.ndarray | sp.Matrix, title: str) -> None:
         """统一打印矩阵状态，方便每一步都带说明，并保持行列对齐。"""
+        start_output_step()
         print(f"\n{title}")
         print("-" * len(title))
         print(self._format_matrix(matrix))
@@ -292,7 +362,7 @@ class MatrixRankCalculator:
         absolute_tol: float = 0.0,
     ) -> int:
         """静默使用 SVD 和自适应阈值计算数值秩。"""
-        singular_values = np.linalg.svd(self.matrix, compute_uv=False)
+        singular_values = self._compute_svd(compute_uv=False)
         threshold, _resolved_relative_tol = self._calculate_svd_threshold(
             singular_values,
             relative_tol,
@@ -356,7 +426,7 @@ class MatrixRankCalculator:
         """
         self._print_matrix(self.exact_matrix, "SVD 法：初始矩阵")
 
-        u, singular_values, vt = np.linalg.svd(self.matrix, full_matrices=True)
+        u, singular_values, vt = self._compute_svd(compute_uv=True)
         sigma = np.zeros_like(self.matrix, dtype=float)
         np.fill_diagonal(sigma, singular_values)
         threshold, resolved_relative_tol = self._calculate_svd_threshold(

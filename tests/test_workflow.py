@@ -1,3 +1,5 @@
+import pytest
+
 from matrix_rank.calculator import MatrixRankCalculator
 from matrix_rank.workflow import (
     calculate_rank_with_selected_method,
@@ -43,6 +45,8 @@ def test_detailed_output_mode_remains_default(capsys):
     assert "矩阵基础信息" in output
     assert "特征多项式 det(lambdaI - A)" in output
     assert "解 det(lambdaI - A) = 0 得到特征值" in output
+    assert "特征子空间基" in output
+    assert "几何重数" in output
 
 
 def test_rectangular_matrix_prints_no_eigenvalue_message(capsys):
@@ -113,3 +117,33 @@ def test_matrix_properties_summary_for_zero_matrix():
         "determinant": "0",
         "is_invertible": "否",
     }
+
+
+@pytest.mark.parametrize("output_mode", ["concise", "detailed"])
+def test_unknown_method_is_rejected_in_all_output_modes(output_mode):
+    calculator = MatrixRankCalculator([[1]])
+
+    with pytest.raises(ValueError, match="未知的计算方法"):
+        calculate_rank_with_selected_method("unknown", calculator, output_mode=output_mode)
+
+
+def test_concise_output_keeps_exact_result_when_svd_is_unavailable(capsys):
+    calculator = MatrixRankCalculator([["1e10000"]])
+
+    calculate_rank_with_selected_method("3", calculator, output_mode="concise")
+
+    output = capsys.readouterr().out
+    assert "精确秩 rank = 1" in output
+    assert "SVD 数值秩参考不可用" in output
+    assert "精确秩结论仍然有效" in output
+
+
+def test_detailed_svd_falls_back_to_exact_rank_when_svd_is_unavailable(capsys):
+    calculator = MatrixRankCalculator([["1e-10000"]])
+
+    calculate_rank_with_selected_method("3", calculator)
+
+    output = capsys.readouterr().out
+    assert "SVD 数值计算不可用" in output
+    assert "下面改用高斯消元法" in output
+    assert "高斯消元法计算结果：rank = 1" in output

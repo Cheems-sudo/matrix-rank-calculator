@@ -1,3 +1,2 @@
-numpy
-sympy
-pytest
+# 安装当前项目，并由 pyproject.toml 解析运行时依赖。
+-e .
