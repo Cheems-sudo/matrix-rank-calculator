@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import sympy as sp
 
-from matrix_rank.calculator import MatrixRankCalculator
+from matrix_rank.calculator import MatrixRankCalculator, SVDUnavailableError
 
 
 def test_zero_matrix_rank_is_zero():
@@ -88,3 +88,24 @@ def test_svd_numeric_rank_matches_numpy_for_full_rank_matrix():
     calculator = MatrixRankCalculator(matrix)
 
     assert calculator.rank_by_svd_silent() == np.linalg.matrix_rank(matrix)
+
+
+@pytest.mark.parametrize("value", ["1e10000", "1e-10000"])
+def test_svd_rejects_values_outside_float_range_but_exact_rank_remains_available(value):
+    calculator = MatrixRankCalculator([[value]])
+
+    assert calculator.rank_by_gaussian_elimination_silent() == 1
+    with pytest.raises(SVDUnavailableError, match="无法进行 SVD"):
+        calculator.rank_by_svd_silent()
+
+
+def test_svd_convergence_failure_uses_unavailable_error(monkeypatch):
+    calculator = MatrixRankCalculator([[1]])
+
+    def fail_svd(*args, **kwargs):
+        raise np.linalg.LinAlgError("did not converge")
+
+    monkeypatch.setattr(np.linalg, "svd", fail_svd)
+
+    with pytest.raises(SVDUnavailableError, match="未收敛"):
+        calculator.rank_by_svd_silent()
