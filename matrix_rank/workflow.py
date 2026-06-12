@@ -263,7 +263,7 @@ def print_rank_verification_summary(
     print("说明：高斯消元法和行列式法计算的是精确秩；SVD 计算的是数值秩，只作为工程参考。")
     print("")
     if original_method_choice == "2" and selected_method_choice != "2":
-        print(f"用户原本选择行列式法，但 n > 4，\n因此已按规则跳过行列式法并改用高斯消元法展示过程。")
+        print("用户原本选择行列式法，但 n > 4，\n因此已按规则跳过行列式法并改用高斯消元法展示过程。")
         print("")
     exact_method_choices = ["1"]
     if max_dimension <= 4:
