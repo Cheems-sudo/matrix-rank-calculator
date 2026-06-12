@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from itertools import combinations
-from typing import Literal, overload
+from typing import Any, Literal, overload
 
 import numpy as np
 import sympy as sp
@@ -97,10 +97,17 @@ class MatrixRankCalculator:
         """执行 SVD，并把 NumPy 收敛错误转换为可降级异常。"""
         self._ensure_svd_available()
         try:
+            if compute_uv:
+                u, singular_values, vt = np.linalg.svd(
+                    self.matrix,
+                    full_matrices=True,
+                )
+                return u, singular_values, vt
+
             return np.linalg.svd(
                 self.matrix,
-                compute_uv=compute_uv,
                 full_matrices=True,
+                compute_uv=False,
             )
         except np.linalg.LinAlgError as exc:
             raise SVDUnavailableError("SVD 数值分解未收敛。") from exc
@@ -162,7 +169,7 @@ class MatrixRankCalculator:
 
     def _format_numeric_scalar(
         self,
-        value: object,
+        value: float | np.floating[Any],
         precision: int = 6,
         zero_tol: float | None = None,
     ) -> str:
