@@ -2,28 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from itertools import combinations
 from typing import Any, Literal, overload
+import warnings
 
 import numpy as np
 import sympy as sp
 
 from matrix_rank.delayed_output import start_output_step
+from matrix_rank.formatting import format_aligned_matrix, format_exact_value
 from matrix_rank.parsing import parse_matrix_element
 
 
 class SVDUnavailableError(ValueError):
     """Raised when the exact matrix cannot be represented safely for SVD."""
-
-
-def format_exact_value(value: object) -> str:
-    """安全格式化精确值；超长整数改用科学计数法摘要。"""
-    try:
-        return str(value)
-    except ValueError:
-        approximate_value = sp.N(value, 6)
-        return f"{approximate_value}（精确值过长，使用近似科学计数法显示）"
 
 
 class MatrixRankCalculator:
@@ -46,11 +39,46 @@ class MatrixRankCalculator:
     def _build_exact_matrix(self, matrix: Iterable[Iterable[object]]) -> sp.Matrix:
         """把输入矩阵转换为 sympy 精确矩阵，避免后续计算和显示出现小数。"""
         try:
-            return sp.Matrix([[parse_matrix_element(str(value)) for value in row] for row in matrix])
+            raw_rows = list(matrix)
         except TypeError as exc:
             raise ValueError("输入必须是二维矩阵。") from exc
+
+        if not raw_rows:
+            raise ValueError("矩阵不能为空。")
+
+        parsed_rows: list[list[sp.Rational]] = []
+        expected_columns: int | None = None
+
+        for row in raw_rows:
+            if isinstance(row, (str, bytes)):
+                raise ValueError("矩阵的每一行都必须是元素序列，不能是字符串。")
+
+            try:
+                raw_values = list(row)
+            except TypeError as exc:
+                raise ValueError("输入必须是二维矩阵。") from exc
+
+            if not raw_values:
+                raise ValueError("矩阵的每一行都必须至少包含一个元素。")
+
+            if expected_columns is None:
+                expected_columns = len(raw_values)
+            elif len(raw_values) != expected_columns:
+                raise ValueError("矩阵每一行的元素数量必须一致。")
+
+            try:
+                parsed_rows.append(
+                    [parse_matrix_element(str(value)) for value in raw_values]
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "矩阵元素必须是整数、小数、分数或科学计数法形式的数字。"
+                ) from exc
+
+        try:
+            return sp.Matrix(parsed_rows)
         except ValueError as exc:
-            raise ValueError("矩阵元素必须是整数、小数、分数或科学计数法形式的数字。") from exc
+            raise ValueError("无法构建 SymPy 矩阵。") from exc
 
     def _build_numeric_matrix(self) -> np.ndarray:
         """构建供 SVD 使用的浮点矩阵，无法表示的元素记为非有限值。"""
@@ -136,36 +164,13 @@ class MatrixRankCalculator:
         输出时会逐列计算最大宽度，并让同一列中的元素右对齐。这样无论是
         numpy 矩阵还是 sympy 矩阵，都不会挤在一起，行和列的边界更清晰。
         """
-        if isinstance(matrix, sp.MatrixBase):
-            rows, cols = matrix.shape
-            formatted_rows = [
-                [self._format_scalar(matrix[row_index, col_index]) for col_index in range(cols)]
-                for row_index in range(rows)
-            ]
-        else:
-            array = np.asarray(matrix)
-            rows, cols = array.shape
-            formatted_rows = [
-                [self._format_scalar(array[row_index, col_index]) for col_index in range(cols)]
-                for row_index in range(rows)
-            ]
-
-        if not formatted_rows:
-            return "[]"
-
-        column_widths = [
-            max(len(formatted_rows[row_index][col_index]) for row_index in range(rows))
-            for col_index in range(cols)
-        ]
-        aligned_rows = []
-
-        for row in formatted_rows:
-            aligned_values = [
-                value.rjust(column_widths[col_index]) for col_index, value in enumerate(row)
-            ]
-            aligned_rows.append("[ " + "  ".join(aligned_values) + " ]")
-
-        return "[\n  " + "\n  ".join(aligned_rows) + "\n]"
+        rows, cols = matrix.shape
+        return format_aligned_matrix(
+            rows,
+            cols,
+            lambda row, col: matrix[row, col],
+            self._format_scalar,
+        )
 
     def _format_numeric_scalar(
         self,
@@ -197,34 +202,16 @@ class MatrixRankCalculator:
         """把数值矩阵格式化为行列对齐的近似值表格。"""
         array = np.asarray(matrix, dtype=float)
         rows, cols = array.shape
-        formatted_rows = [
-            [
-                self._format_numeric_scalar(
-                    array[row_index, col_index],
-                    precision,
-                    zero_tol,
-                )
-                for col_index in range(cols)
-            ]
-            for row_index in range(rows)
-        ]
-
-        if not formatted_rows:
-            return "[]"
-
-        column_widths = [
-            max(len(formatted_rows[row_index][col_index]) for row_index in range(rows))
-            for col_index in range(cols)
-        ]
-        aligned_rows = []
-
-        for row in formatted_rows:
-            aligned_values = [
-                value.rjust(column_widths[col_index]) for col_index, value in enumerate(row)
-            ]
-            aligned_rows.append("[ " + "  ".join(aligned_values) + " ]")
-
-        return "[\n  " + "\n  ".join(aligned_rows) + "\n]"
+        return format_aligned_matrix(
+            rows,
+            cols,
+            lambda row, col: array[row, col],
+            lambda value: self._format_numeric_scalar(
+                value,
+                precision,
+                zero_tol,
+            ),
+        )
 
     def _print_numeric_matrix(
         self,
@@ -276,6 +263,42 @@ class MatrixRankCalculator:
         print("-" * len(title))
         print(self._format_matrix(matrix))
 
+    def _iter_subdeterminants(
+        self,
+        max_order: int | None = None,
+    ) -> Iterator[
+        tuple[
+            int,
+            tuple[int, ...],
+            tuple[int, ...],
+            sp.Matrix,
+            sp.Expr,
+        ]
+    ]:
+        """按阶数从高到低生成子矩阵及其行列式。"""
+        rows, cols = self.exact_matrix.shape
+        highest_order = (
+            min(rows, cols)
+            if max_order is None
+            else min(max_order, rows, cols)
+        )
+
+        for order in range(highest_order, 0, -1):
+            for row_indices in combinations(range(rows), order):
+                for col_indices in combinations(range(cols), order):
+                    sub_matrix = self.exact_matrix.extract(
+                        row_indices,
+                        col_indices,
+                    )
+                    determinant = sp.simplify(sub_matrix.det())
+                    yield (
+                        order,
+                        row_indices,
+                        col_indices,
+                        sub_matrix,
+                        determinant,
+                    )
+
     def rank_by_gaussian_elimination(self) -> int:
         """使用高斯消元法计算秩，并打印每次行变换后的矩阵。
 
@@ -315,8 +338,12 @@ class MatrixRankCalculator:
             # 把主元行归一化，使主元等于 1，便于观察后续消元。
             pivot_value = a[pivot_row, col]
             print(f"选定主元 a[{pivot_row + 1}, {col + 1}] = {self._format_scalar(pivot_value)}。")
-            for col_index in range(cols):
-                a[pivot_row, col_index] = sp.simplify(a[pivot_row, col_index] / pivot_value)
+            a.row_op(
+                pivot_row,
+                lambda value, _col, pivot=pivot_value: sp.simplify(
+                    value / pivot
+                ),
+            )
             self._print_matrix(a, f"第 {pivot_row + 1} 行除以主元 {self._format_scalar(pivot_value)}，主元归一化")
 
             # 消去主元下方所有行在当前列中的元素。
@@ -326,8 +353,16 @@ class MatrixRankCalculator:
                     print(f"第 {row + 1} 行在第 {col + 1} 列已经为 0，无需消元。")
                     continue
 
-                for col_index in range(cols):
-                    a[row, col_index] = sp.simplify(a[row, col_index] - factor * a[pivot_row, col_index])
+                a.row_op(
+                    row,
+                    lambda value,
+                    col_index,
+                    elimination_factor=factor,
+                    source_row=pivot_row: sp.simplify(
+                        value
+                        - elimination_factor * a[source_row, col_index]
+                    ),
+                )
                 self._print_matrix(
                     a,
                     f"R{row + 1} <- R{row + 1} - ({self._format_scalar(factor)}) * R{pivot_row + 1}，消去第 {col + 1} 列元素",
@@ -343,27 +378,24 @@ class MatrixRankCalculator:
         print(f"非零行数量为 {rank}，因此矩阵的秩为 {rank}。")
         return rank
 
-    def rank_by_gaussian_elimination_silent(self) -> int:
-        """静默计算精确秩，用于在结果汇总中复核高斯消元法结果。"""
+    def rank_by_sympy_builtin(self) -> int:
+        """使用 SymPy 内置算法计算精确秩，作为独立复核结果。"""
         return int(self.exact_matrix.rank())
 
-    def rank_by_determinants_silent(self, max_order: int | None = None) -> int:
-        """静默使用子行列式法计算秩，适合小矩阵复核。"""
-        sym_matrix = self.exact_matrix.copy()
-        rows, cols = sym_matrix.shape
-        highest_order = min(rows, cols) if max_order is None else min(max_order, rows, cols)
-
-        for order in range(highest_order, 0, -1):
-            for row_indices in combinations(range(rows), order):
-                for col_indices in combinations(range(cols), order):
-                    sub_matrix = sym_matrix.extract(row_indices, col_indices)
-                    determinant = sp.simplify(sub_matrix.det())
-                    if determinant != 0:
-                        return order
+    def rank_by_determinants_without_output(
+        self,
+        max_order: int | None = None,
+    ) -> int:
+        """不打印过程地使用子行列式法计算精确秩。"""
+        for order, _rows, _cols, _sub_matrix, determinant in (
+            self._iter_subdeterminants(max_order)
+        ):
+            if determinant != 0:
+                return order
 
         return 0
 
-    def rank_by_svd_silent(
+    def rank_by_svd_without_output(
         self,
         relative_tol: float | None = None,
         absolute_tol: float = 0.0,
@@ -377,6 +409,39 @@ class MatrixRankCalculator:
         )
         return int(np.sum(singular_values > threshold))
 
+    def rank_by_gaussian_elimination_silent(self) -> int:
+        """兼容旧 API；请改用 rank_by_sympy_builtin。"""
+        warnings.warn(
+            "rank_by_gaussian_elimination_silent() 实际使用 SymPy 内置秩算法；"
+            "请改用 rank_by_sympy_builtin()。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.rank_by_sympy_builtin()
+
+    def rank_by_determinants_silent(self, max_order: int | None = None) -> int:
+        """兼容旧 API；请改用 rank_by_determinants_without_output。"""
+        warnings.warn(
+            "rank_by_determinants_silent() 已弃用；"
+            "请改用 rank_by_determinants_without_output()。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.rank_by_determinants_without_output(max_order)
+
+    def rank_by_svd_silent(
+        self,
+        relative_tol: float | None = None,
+        absolute_tol: float = 0.0,
+    ) -> int:
+        """兼容旧 API；请改用 rank_by_svd_without_output。"""
+        warnings.warn(
+            "rank_by_svd_silent() 已弃用；请改用 rank_by_svd_without_output()。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.rank_by_svd_without_output(relative_tol, absolute_tol)
+
     def rank_by_determinants(self, max_order: int | None = None) -> int:
         """使用子行列式法计算秩，并打印每个子矩阵及其行列式。
 
@@ -388,30 +453,32 @@ class MatrixRankCalculator:
         Args:
             max_order: 允许枚举的最高阶数；默认枚举到 min(行数, 列数)。
         """
-        sym_matrix = self.exact_matrix.copy()
-        rows, cols = sym_matrix.shape
-        highest_order = min(rows, cols) if max_order is None else min(max_order, rows, cols)
-
-        self._print_matrix(sym_matrix, "行列式法：初始矩阵")
+        self._print_matrix(self.exact_matrix, "行列式法：初始矩阵")
         print("矩阵的秩等于所有非零子行列式中的最高阶数。")
 
-        # 从高阶到低阶检查，一旦发现非零子行列式即可确定秩。
-        for order in range(highest_order, 0, -1):
-            print(f"\n开始检查所有 {order} 阶子行列式。")
-            for row_indices in combinations(range(rows), order):
-                for col_indices in combinations(range(cols), order):
-                    sub_matrix = sym_matrix.extract(row_indices, col_indices)
-                    determinant = sp.simplify(sub_matrix.det())
+        current_order: int | None = None
+        for order, row_indices, col_indices, sub_matrix, determinant in (
+            self._iter_subdeterminants(max_order)
+        ):
+            if order != current_order:
+                if current_order is not None:
+                    print(
+                        f"所有 {current_order} 阶子行列式均为 0，"
+                        "继续检查更低阶。"
+                    )
+                current_order = order
+                print(f"\n开始检查所有 {order} 阶子行列式。")
 
-                    print(f"选择行 {[i + 1 for i in row_indices]}、列 {[j + 1 for j in col_indices]} 得到子矩阵：")
-                    self._print_matrix(sub_matrix, "当前子矩阵")
-                    print(f"该子矩阵的行列式 = {determinant}")
+            print(
+                f"选择行 {[i + 1 for i in row_indices]}、"
+                f"列 {[j + 1 for j in col_indices]} 得到子矩阵："
+            )
+            self._print_matrix(sub_matrix, "当前子矩阵")
+            print(f"该子矩阵的行列式 = {determinant}")
 
-                    if determinant != 0:
-                        print(f"发现非零 {order} 阶子行列式，因此矩阵的秩为 {order}。")
-                        return order
-
-            print(f"所有 {order} 阶子行列式均为 0，继续检查更低阶。")
+            if determinant != 0:
+                print(f"发现非零 {order} 阶子行列式，因此矩阵的秩为 {order}。")
+                return order
 
         print("所有元素均为 0，因此矩阵的秩为 0。")
         return 0

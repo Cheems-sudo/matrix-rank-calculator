@@ -1,2 +1,3 @@
-# 安装当前项目，并由 pyproject.toml 解析运行时依赖。
--e .
+# 运行时依赖。项目安装仍推荐使用：python -m pip install .
+numpy>=1.24,<3
+sympy>=1.11,<2

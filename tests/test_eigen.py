@@ -1,4 +1,5 @@
 import sympy as sp
+import logging
 
 from matrix_rank.calculator import MatrixRankCalculator
 from matrix_rank.eigen import (
@@ -79,3 +80,22 @@ def test_large_square_matrix_skips_exact_eigenvalue_calculation():
     assert summary.characteristic_polynomial is None
     assert summary.eigenvalues == ()
     assert str(MAX_EIGENVALUE_ORDER) in summary.message
+
+
+def test_eigenvalue_failure_is_logged(monkeypatch, caplog):
+    calculator = MatrixRankCalculator([[1]])
+
+    def fail_eigenvects(_matrix):
+        raise RuntimeError("symbolic failure")
+
+    monkeypatch.setattr(
+        type(calculator.exact_matrix),
+        "eigenvects",
+        fail_eigenvects,
+    )
+
+    with caplog.at_level(logging.ERROR, logger="matrix_rank.eigen"):
+        summary = get_eigenvalue_summary(calculator)
+
+    assert summary.message == EIGENVALUE_UNAVAILABLE_MESSAGE
+    assert "symbolic failure" in caplog.text

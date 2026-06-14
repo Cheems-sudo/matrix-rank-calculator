@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from contextlib import redirect_stdout
+from functools import partial
 import queue
 import threading
 import tkinter as tk
@@ -18,6 +20,65 @@ from matrix_rank.workflow import calculate_rank_with_selected_method
 
 MAX_MATRIX_ROWS = 10
 MAX_MATRIX_COLS = 10
+DEFAULT_STEP_DELAY_MS = 700
+STEP_SPEED_DELAYS = {
+    "快速": 200,
+    "正常": DEFAULT_STEP_DELAY_MS,
+    "慢速": 1400,
+}
+WELCOME_MESSAGE = (
+    "你好，我是矩阵分析助手。\n"
+    "我可以计算矩阵的秩，并根据矩阵类型补充基础性质和特征信息。\n"
+    "秩的计算支持高斯消元法、行列式法和奇异值分解法（SVD）；"
+    "详细模式会展示中间计算过程，简洁模式只显示主要结论。\n"
+    "对于方阵，我还会给出行列式、可逆性、特征多项式、特征值、"
+    "代数重数、几何重数和特征子空间基。\n"
+    "矩阵元素支持整数、小数、分数和科学计数法，例如 "
+    "2、0.5、3/4、1e12、1e-12。\n"
+    "请选择接下来要做什么。"
+)
+
+
+class MatrixGridParseError(ValueError):
+    """矩阵表格解析错误，并记录出错单元格位置。"""
+
+    def __init__(self, row_index: int, col_index: int, message: str) -> None:
+        super().__init__(message)
+        self.row_index = row_index
+        self.col_index = col_index
+
+
+def parse_matrix_grid_values(
+    raw_rows: Sequence[Sequence[str]],
+) -> list[list[sp.Rational]]:
+    """解析矩阵表格中的文本值，并在错误中保留行列位置。"""
+    parsed_matrix: list[list[sp.Rational]] = []
+    expected_columns: int | None = None
+
+    for row_index, raw_row in enumerate(raw_rows):
+        if not raw_row:
+            raise ValueError(f"矩阵第 {row_index + 1} 行不能为空。")
+
+        if expected_columns is None:
+            expected_columns = len(raw_row)
+        elif len(raw_row) != expected_columns:
+            raise ValueError("矩阵每一行的元素数量必须一致。")
+
+        parsed_row = []
+        for col_index, raw_value in enumerate(raw_row):
+            try:
+                parsed_row.append(parse_matrix_element(raw_value))
+            except ValueError as exc:
+                raise MatrixGridParseError(
+                    row_index,
+                    col_index,
+                    str(exc),
+                ) from exc
+        parsed_matrix.append(parsed_row)
+
+    if not parsed_matrix:
+        raise ValueError("矩阵不能为空。")
+    return parsed_matrix
 
 
 def get_dimension_validation_error(rows: int, cols: int) -> str | None:
@@ -30,6 +91,14 @@ def get_dimension_validation_error(rows: int, cols: int) -> str | None:
             "较大的矩阵可能导致详细计算或特征值计算耗时过长。"
         )
     return None
+
+
+def get_step_delay_ms(speed_name: str) -> int:
+    """返回步骤播放速度对应的延迟毫秒数。"""
+    try:
+        return STEP_SPEED_DELAYS[speed_name]
+    except KeyError as exc:
+        raise ValueError("未知的步骤播放速度。") from exc
 
 
 class MatrixRankRobotApp:
@@ -45,10 +114,17 @@ class MatrixRankRobotApp:
         "concise": "简洁模式",
     }
 
-    def __init__(self, root: tk.Tk) -> None:
+    def __init__(
+        self,
+        root: tk.Tk,
+        step_delay_ms: int = DEFAULT_STEP_DELAY_MS,
+    ) -> None:
         """初始化机器人窗口和交互状态。"""
+        if step_delay_ms < 0:
+            raise ValueError("step_delay_ms 不能为负数。")
+
         self.root = root
-        self.root.title("计算矩阵秩的机器人")
+        self.root.title("矩阵分析助手")
         self.root.geometry("800x600")
         self.root.minsize(760, 560)
 
@@ -62,7 +138,7 @@ class MatrixRankRobotApp:
         self.pending_step_messages: list[str] = []
         self.calculation_finished = False
         self.is_displaying_steps = False
-        self.step_delay_ms = 700
+        self.step_delay_ms = step_delay_ms
 
         self.chat_log = scrolledtext.ScrolledText(
             self.root,
@@ -107,15 +183,9 @@ class MatrixRankRobotApp:
     def show_welcome(self) -> None:
         """显示项目介绍，并让用户选择计算或退出。"""
         self.clear_controls()
-        self.robot_say(
-            "你好，我是计算矩阵秩的机器人。\n"
-            "我可以计算矩阵的秩，并展示详细的中间计算过程。\n"
-            "我支持三种方法：高斯消元法、行列式法和奇异值分解法（SVD）。\n"
-            "你可以输入整数、小数、分数或科学计数法，例如 2、0.5、3/4、1e12、1e-12；我会尽量用分数显示结果，避免小数。\n"
-            "请选择接下来要做什么。"
-        )
+        self.robot_say(WELCOME_MESSAGE)
 
-        tk.Button(self.control_frame, text="计算矩阵秩", command=self.show_method_selection).pack(
+        tk.Button(self.control_frame, text="开始计算", command=self.show_method_selection).pack(
             side=tk.LEFT,
             padx=(0, 8),
         )
@@ -123,7 +193,7 @@ class MatrixRankRobotApp:
 
     def show_method_selection(self) -> None:
         """显示计算方法选择按钮。"""
-        self.user_say("计算矩阵秩")
+        self.user_say("开始计算")
         self.clear_controls()
         self.robot_say("请选择一种计算方法。")
 
@@ -161,7 +231,7 @@ class MatrixRankRobotApp:
         tk.Button(
             self.control_frame,
             text="详细模式（推荐）",
-            command=lambda: self.choose_output_mode("detailed"),
+            command=self.show_step_speed_selection,
         ).pack(side=tk.LEFT, padx=(0, 8))
         tk.Button(
             self.control_frame,
@@ -169,6 +239,35 @@ class MatrixRankRobotApp:
             command=lambda: self.choose_output_mode("concise"),
         ).pack(side=tk.LEFT, padx=(0, 8))
         tk.Button(self.control_frame, text="返回选择方法", command=self.show_method_selection).pack(side=tk.LEFT)
+
+    def set_step_speed(self, speed_name: str) -> None:
+        """更新详细模式每一步的显示间隔。"""
+        self.step_delay_ms = get_step_delay_ms(speed_name)
+
+    def show_step_speed_selection(self) -> None:
+        """仅为详细模式显示步骤播放速度选项。"""
+        self.user_say(self.OUTPUT_MODE_NAMES["detailed"])
+        self.clear_controls()
+        self.robot_say("请选择详细计算步骤的播放速度。")
+
+        for speed_name in STEP_SPEED_DELAYS:
+            tk.Button(
+                self.control_frame,
+                text=speed_name,
+                command=partial(self.choose_detailed_speed, speed_name),
+            ).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Button(
+            self.control_frame,
+            text="返回输出模式",
+            command=self.show_output_mode_selection,
+        ).pack(side=tk.LEFT)
+
+    def choose_detailed_speed(self, speed_name: str) -> None:
+        """记录详细模式播放速度，并继续输入矩阵尺寸。"""
+        self.set_step_speed(speed_name)
+        self.user_say(f"步骤速度：{speed_name}")
+        self.output_mode = "detailed"
+        self.show_dimension_input()
 
     def choose_output_mode(self, output_mode: str) -> None:
         """记录输出模式，并开始读取矩阵尺寸。"""
@@ -323,34 +422,23 @@ class MatrixRankRobotApp:
 
     def _parse_matrix_grid(self) -> list[list[sp.Rational]] | None:
         """解析整个矩阵表格；发现错误时提示具体行列位置。"""
-        parsed_matrix = []
-        error_message = "请输入整数、小数、分数或科学计数法。"
+        raw_rows = [
+            [entry.get() for entry in entry_row]
+            for entry_row in self.matrix_entries
+        ]
 
-        for row_index, entry_row in enumerate(self.matrix_entries):
-            parsed_row = []
-            for col_index, entry in enumerate(entry_row):
-                raw_value = entry.get().strip()
-                if not raw_value:
-                    messagebox.showerror(
-                        "输入错误",
-                        f"第 {row_index + 1} 行第 {col_index + 1} 列输入错误，{error_message}",
-                    )
-                    entry.focus_set()
-                    return None
-
-                try:
-                    parsed_row.append(parse_matrix_element(raw_value))
-                except ValueError:
-                    messagebox.showerror(
-                        "输入错误",
-                        f"第 {row_index + 1} 行第 {col_index + 1} 列输入错误，{error_message}",
-                    )
-                    entry.focus_set()
-                    return None
-
-            parsed_matrix.append(parsed_row)
-
-        return parsed_matrix
+        try:
+            return parse_matrix_grid_values(raw_rows)
+        except MatrixGridParseError as exc:
+            messagebox.showerror(
+                "输入错误",
+                f"第 {exc.row_index + 1} 行第 {exc.col_index + 1} 列输入错误：{exc}",
+            )
+            self.matrix_entries[exc.row_index][exc.col_index].focus_set()
+            return None
+        except ValueError as exc:
+            messagebox.showerror("输入错误", str(exc))
+            return None
 
     def _format_matrix_input_summary(self, matrix: list[list[sp.Rational]]) -> str:
         """把用户输入的矩阵整理成简洁的聊天记录。"""

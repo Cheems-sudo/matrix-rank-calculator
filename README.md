@@ -36,11 +36,14 @@ pip install .
 pip install -e ".[dev]"
 ```
 
-为兼容原有安装方式，`requirements.txt` 会以可编辑模式安装当前项目：
+如果只想查看或安装明确列出的运行时依赖，也可以使用：
 
 ```bash
 pip install -r requirements.txt
 ```
+
+`requirements.txt` 不会安装当前项目本身；完整安装仍推荐使用
+`pip install .`。
 
 ## 运行方式
 
@@ -51,6 +54,8 @@ git clone https://github.com/Cheems-sudo/matrix-rank-calculator
 cd matrix-rank-calculator
 python matrix_rank_calculator.py
 ```
+
+根目录脚本是为原有使用方式保留的兼容入口。安装项目后推荐使用：
 
 安装项目后也可以使用 GUI 命令：
 
@@ -77,6 +82,30 @@ printf "1,2\n3,4\n" | matrix-rank --method svd --mode detailed
 ```
 
 `--method` 支持 `gaussian`、`determinant` 和 `svd`，`--mode` 支持 `concise` 和 `detailed`。
+
+也可以直接读取 UTF-8 CSV 或文本文件：
+
+```bash
+matrix-rank --file matrix.csv
+```
+
+使用 JSON 输出可以在脚本中直接读取精确秩、SVD 参考、矩阵性质和特征信息：
+
+```bash
+matrix-rank --file matrix.csv --format json
+```
+
+将结果写入文件：
+
+```bash
+matrix-rank --file matrix.csv --format json --output result.json
+```
+
+查看当前版本：
+
+```bash
+matrix-rank --version
+```
 
 ## 界面说明
 
@@ -108,6 +137,8 @@ printf "1,2\n3,4\n" | matrix-rank --method svd --mode detailed
 
 详细模式用于查看完整计算过程。根据所选方法，界面会展示高斯消元步骤、行列式法的子矩阵检查过程，或 SVD 的数值分解与阈值判断过程，并在结尾补充复核总结。
 
+选择详细模式后，可以继续设置步骤播放速度，支持快速、正常和慢速。
+
 ## 方法说明
 
 ### 高斯消元法
@@ -124,27 +155,36 @@ SVD 方法通过奇异值分解和阈值判断给出数值秩。它适合浮点�
 
 如果矩阵元素过大或过小，无法安全转换为有限的双精度浮点数，程序会跳过 SVD 数值复核，并继续使用 `sympy` 给出精确秩结论。
 
+输入解析允许十进制指数绝对值不超过 `10000`。这高于 float64
+大约 `1e±308` 的常用范围，是为了保留 SymPy 精确计算能力；超出
+float64 范围的输入仍可参与高斯消元、行列式和符号计算，但 SVD
+会明确标记为不可用。
+
 ### 方阵可逆性
 
 只有方阵才讨论行列式和可逆性。项目在矩阵基础信息中计算 `det(A)`，并根据 `det(A) != 0` 判断方阵是否可逆；非方阵没有行列式，也不判断为可逆矩阵。
 
 ### 特征值
 
-只有方阵才有特征值。项目使用 `sympy` 按 `det(lambdaI - A)` 计算精确特征多项式，并输出特征值、代数重数、几何重数和一组特征子空间基。非方阵会直接显示不适用说明。为避免符号计算耗时过长，当前仅对不超过 6 阶的方阵计算精确特征信息；如果表达式超出符号算法的处理范围，程序也会跳过该部分，但不影响精确秩结论。
+只有方阵才有特征值。项目使用 `sympy` 按 `p(λ) = det(λI - A)` 计算精确特征多项式，并输出特征值、代数重数、几何重数和一组特征子空间基。非方阵会直接显示不适用说明。为避免符号计算耗时过长，当前仅对不超过 6 阶的方阵计算精确特征信息；如果表达式超出符号算法的处理范围，程序也会跳过该部分，但不影响精确秩结论。
 
 ## 项目结构
 
 ```text
 .
 ├── matrix_rank_calculator.py      # 程序入口
+├── CHANGELOG.md                   # 版本变更记录
+├── .pre-commit-config.yaml        # 提交前质量检查
 ├── matrix_rank/
 │   ├── app.py                     # 应用启动逻辑
 │   ├── calculator.py              # 矩阵秩计算核心
 │   ├── cli.py                     # 命令行入口
 │   ├── delayed_output.py          # GUI 延迟输出控制
 │   ├── eigen.py                   # 特征多项式和特征值
+│   ├── formatting.py              # 矩阵和数学表达式格式化
 │   ├── gui.py                     # tkinter 图形界面
 │   ├── parsing.py                 # 矩阵元素解析
+│   ├── version.py                 # 项目版本
 │   ├── workflow.py                # 计算流程和结果汇总
 │   └── __init__.py
 ├── assets/
@@ -157,11 +197,12 @@ SVD 方法通过奇异值分解和阈值判断给出数值秩。它适合浮点�
 │   ├── test_delayed_output.py     # GUI 步骤输出协议测试
 │   ├── test_eigen.py              # 特征值测试
 │   ├── test_entrypoint.py         # 程序入口测试
+│   ├── test_formatting.py         # 格式化和编码兼容测试
 │   ├── test_gui.py                # GUI 输入边界测试
 │   ├── test_parsing.py            # 输入解析测试
 │   ├── test_public_api.py          # 包级公开 API 测试
 │   └── test_workflow.py           # 计算流程和结果汇总测试
-├── requirements.txt               # Python 依赖
+├── requirements.txt               # 明确列出的运行时依赖
 ├── pyproject.toml                 # 项目元数据、依赖和工具配置
 ├── .gitattributes                 # Git 文本换行规则
 ├── .github/workflows/test.yml     # 多版本测试和质量检查

@@ -1,11 +1,14 @@
-"""Eigenvalue helpers for exact symbolic matrix calculations."""
+"""精确特征多项式、特征值和特征子空间计算。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 
 import sympy as sp
 
+
+logger = logging.getLogger(__name__)
 
 NON_SQUARE_EIGENVALUE_MESSAGE = "非方阵没有特征值。"
 EIGENVALUE_UNAVAILABLE_MESSAGE = "当前矩阵的精确特征值暂不可计算。"
@@ -14,7 +17,7 @@ MAX_EIGENVALUE_ORDER = 6
 
 @dataclass(frozen=True)
 class EigenspaceSummary:
-    """Exact eigenvectors spanning one eigenspace."""
+    """一个特征子空间的精确基与重数信息。"""
 
     eigenvalue: sp.Expr
     algebraic_multiplicity: int
@@ -22,13 +25,13 @@ class EigenspaceSummary:
 
     @property
     def geometric_multiplicity(self) -> int:
-        """Return the dimension of the eigenspace."""
+        """返回特征子空间维数，即几何重数。"""
         return len(self.eigenvectors)
 
 
 @dataclass(frozen=True)
 class EigenvalueSummary:
-    """Exact characteristic polynomial and eigenvalues for a matrix."""
+    """矩阵的精确特征多项式和特征值摘要。"""
 
     is_square: bool
     characteristic_polynomial: sp.Expr | None
@@ -38,7 +41,7 @@ class EigenvalueSummary:
 
 
 def get_eigenvalue_summary(matrix: sp.MatrixBase) -> EigenvalueSummary:
-    """Return exact eigenvalue information for a square matrix."""
+    """返回方阵的精确特征信息；失败时记录日志并安全降级。"""
     rows, cols = matrix.shape
     if rows != cols:
         return EigenvalueSummary(
@@ -82,6 +85,11 @@ def get_eigenvalue_summary(matrix: sp.MatrixBase) -> EigenvalueSummary:
             for eigenspace in eigenspaces
         )
     except Exception:  # noqa: BLE001 - 符号算法可能因表达式规模或内部限制失败
+        logger.exception(
+            "计算 %s × %s 矩阵的精确特征信息失败。",
+            rows,
+            cols,
+        )
         return EigenvalueSummary(
             is_square=True,
             characteristic_polynomial=None,

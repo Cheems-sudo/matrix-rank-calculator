@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import sys
+
 import sympy as sp
 
 from matrix_rank.calculator import (
     MatrixRankCalculator,
     SVDUnavailableError,
-    format_exact_value,
 )
 from matrix_rank.delayed_output import start_output_step
 from matrix_rank.eigen import EigenvalueSummary, get_eigenvalue_summary as build_eigenvalue_summary
+from matrix_rank.formatting import (
+    format_characteristic_polynomial,
+    format_eigenvalue_for_display,
+    format_exact_value,
+)
 
 
 METHOD_NAMES = {
@@ -92,9 +98,9 @@ def print_concise_rank_summary(method_choice: str, calculator: MatrixRankCalcula
 
     rows, cols = calculator.matrix.shape
     max_dimension = max(rows, cols)
-    exact_rank = calculator.rank_by_gaussian_elimination_silent()
+    exact_rank = calculator.rank_by_sympy_builtin()
     try:
-        svd_rank = calculator.rank_by_svd_silent()
+        svd_rank = calculator.rank_by_svd_without_output()
         svd_error = None
     except SVDUnavailableError as exc:
         svd_rank = None
@@ -140,7 +146,7 @@ def get_matrix_properties_summary(
     """返回矩阵规模、秩、满秩、行列式和可逆性等基础信息。"""
     rows, cols = calculator.matrix.shape
     resolved_exact_rank = (
-        calculator.rank_by_gaussian_elimination_silent()
+        calculator.rank_by_sympy_builtin()
         if exact_rank is None
         else exact_rank
     )
@@ -206,30 +212,48 @@ def print_eigenvalue_summary(
         print(summary.message)
         return
 
+    assert summary.characteristic_polynomial is not None
+    characteristic_polynomial = format_characteristic_polynomial(
+        summary.characteristic_polynomial,
+        getattr(sys.stdout, "encoding", None),
+    )
+
     if output_mode == "detailed":
-        print("说明：特征多项式按 det(lambdaI - A) 计算。")
-        print(
-            "特征多项式 det(lambdaI - A)："
-            f"{format_exact_value(summary.characteristic_polynomial)}"
-        )
-        print("解 det(lambdaI - A) = 0 得到特征值：")
+        print("特征多项式采用约定 p(λ) = det(λI - A)。")
+        print(f"p(λ) = det(λI - A) = {characteristic_polynomial}")
+        print("解特征方程 p(λ) = 0，得到：")
     elif output_mode == "concise":
-        print(f"特征多项式：{format_exact_value(summary.characteristic_polynomial)}")
+        print(f"特征多项式 p(λ) = {characteristic_polynomial}")
         print("特征值：")
     else:
         raise ValueError("output_mode 必须是 detailed 或 concise。")
 
+    used_approximation = False
     for eigenvalue, algebraic_multiplicity in summary.eigenvalues:
+        displayed_eigenvalue, is_approximation = format_eigenvalue_for_display(
+            eigenvalue,
+            getattr(sys.stdout, "encoding", None),
+        )
+        used_approximation = used_approximation or is_approximation
+        relation = "≈" if is_approximation else "="
         print(
-            f"- {format_exact_value(eigenvalue)}，"
+            f"- λ {relation} {displayed_eigenvalue}，"
             f"代数重数 {algebraic_multiplicity}"
         )
+
+    if used_approximation:
+        print("说明：精确根式过长，以上对应特征值改用数值近似显示。")
 
     if output_mode == "detailed":
         print("特征子空间基：")
         for eigenspace in summary.eigenspaces:
+            displayed_eigenvalue, is_approximation = format_eigenvalue_for_display(
+                eigenspace.eigenvalue,
+                getattr(sys.stdout, "encoding", None),
+            )
+            relation = "≈" if is_approximation else "="
             print(
-                f"- 特征值 {format_exact_value(eigenspace.eigenvalue)}："
+                f"- λ {relation} {displayed_eigenvalue}："
                 f"几何重数 {eigenspace.geometric_multiplicity}"
             )
             for vector in eigenspace.eigenvectors:
@@ -278,16 +302,16 @@ def print_rank_verification_summary(
         if method_choice == selected_method_choice:
             exact_results[method_choice] = selected_rank
         elif method_choice == "1":
-            exact_results[method_choice] = calculator.rank_by_gaussian_elimination_silent()
+            exact_results[method_choice] = calculator.rank_by_sympy_builtin()
         else:
-            exact_results[method_choice] = calculator.rank_by_determinants_silent()
+            exact_results[method_choice] = calculator.rank_by_determinants_without_output()
 
     svd_error: str | None = None
     if selected_method_choice == "3":
         svd_rank = selected_rank
     else:
         try:
-            svd_rank = calculator.rank_by_svd_silent()
+            svd_rank = calculator.rank_by_svd_without_output()
         except SVDUnavailableError as exc:
             svd_error = str(exc)
 

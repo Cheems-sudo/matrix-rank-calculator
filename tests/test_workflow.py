@@ -18,7 +18,7 @@ def test_concise_output_mode_prints_key_summary(capsys):
     assert "所选方法：高斯消元法" in output
     assert "矩阵基础信息" in output
     assert "特征值信息" in output
-    assert "特征多项式：" in output
+    assert "特征多项式 p(λ) = λ² − 5λ" in output
     assert "精确秩 rank = 1" in output
     assert "SVD 数值秩参考 rank = 1" in output
 
@@ -43,10 +43,31 @@ def test_detailed_output_mode_remains_default(capsys):
     assert "高斯消元法计算结果：rank = 2" in output
     assert "结果可信度复核" in output
     assert "矩阵基础信息" in output
-    assert "特征多项式 det(lambdaI - A)" in output
-    assert "解 det(lambdaI - A) = 0 得到特征值" in output
+    assert "p(λ) = det(λI - A) = λ² − 2λ + 1" in output
+    assert "解特征方程 p(λ) = 0" in output
+    assert "λ = 1，代数重数 2" in output
     assert "特征子空间基" in output
     assert "几何重数" in output
+
+
+def test_complex_radical_eigenvalues_use_readable_approximations(capsys):
+    calculator = MatrixRankCalculator(
+        [
+            [0, 0, 122],
+            [1, 0, -34],
+            [0, 1, 14],
+        ]
+    )
+
+    calculate_rank_with_selected_method("1", calculator, output_mode="concise")
+
+    output = capsys.readouterr().out
+    assert "p(λ) = λ³ − 14λ² + 34λ − 122" in output
+    assert "λ ≈ 12.015345" in output
+    assert "λ ≈ 0.99232763 − 3.0280305i" in output
+    assert "λ ≈ 0.99232763 + 3.0280305i" in output
+    assert "精确根式过长" in output
+    assert "sqrt(" not in output
 
 
 def test_rectangular_matrix_prints_no_eigenvalue_message(capsys):
