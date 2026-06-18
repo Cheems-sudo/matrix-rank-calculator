@@ -123,7 +123,7 @@ matrix-rank --version
 1e-3
 ```
 
-![Input](assets/inpu2t.png)
+![Input](assets/input.png)
 
 ![Result](assets/output1.png)
 ![Result](assets/output2.png)
