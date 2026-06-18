@@ -125,7 +125,8 @@ matrix-rank --version
 
 ![Input](assets/input.png)
 
-![Result](assets/output.png)
+![Result](assets/output1.png)
+![Result](assets/output2.png)
 
 ## 计算模式说明
 
